@@ -7,6 +7,7 @@
 (in-package :ailisp)
 
 (defvar *model* nil "Default model used by AI when :model is omitted.")
+(defvar *last-usage* nil "Total tokens reported by the most recent model call, or NIL.")
 
 (defgeneric call-model (model prompt &key system params into))
 
@@ -44,6 +45,7 @@
                      (cons "stream" :false))))
          (resp (%curl-json (concatenate 'string (openai-model-url m) "/chat/completions") req))
          (parsed (json-decode resp)))
+    (setf *last-usage* (%dig parsed "usage" "total_tokens"))
     ;; return the assistant content string; parse-output (ai.lisp) decodes it if :into
     (%dig parsed "choices" 0 "message" "content")))
 

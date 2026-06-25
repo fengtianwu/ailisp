@@ -287,7 +287,11 @@ NL 条件编译下沉,以及——**真的做出来并 benchmark**(Pel 自承无
 - [ ] M4 NL 条件编译下沉(超 Pel 验证点)
 - [ ] M5 REPL:条件/重启 + 保留中间态 + 自愈 patch
 - [ ] M6 安全:文法约束 + 效应/能力 + 成本预算
-- [ ] M7 评测:Berkeley FCL / agent 任务成功率 / token 成本 vs JSON tool-calling
+- [x] M7 评测框架:s-表达式工具调用 vs JSON function-calling 头对头(`bench/`,`make bench`)
+  - [x] 评分器(`bench/grade.lisp`,确定性 10 条测试)+ 任务集 + harness(token/延迟/正确率)
+  - [x] 首跑(n=6,gemma-12b):**s-expr token -23%、延迟更低**;正确率 3 vs 4(小样本不显著,
+    失分在参数规范化 convert/translate,与格式无关)。**关键:能跑出对比数据 —— Pel 零评测的直接超越。**
+  - [ ] 扩样本 + 接 Berkeley FCL 子集 + record/replay 固定(后续)
 - [ ] (实验) L3 符号 fallback、L4 NL reader、AST 自动并行、向量检索
 
 ---

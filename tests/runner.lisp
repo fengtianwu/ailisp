@@ -8,7 +8,8 @@
     "tests/unit/agent.cases.lisp"
     "tests/unit/rag.cases.lisp"
     "tests/unit/pipe.cases.lisp"
-    "tests/unit/params.cases.lisp"))
+    "tests/unit/params.cases.lisp"
+    "tests/unit/grade.cases.lisp"))
 
 (defun read-cases-file (path)
   "Return the list of (deftestset NAME case...) forms in PATH, read as data."
@@ -133,8 +134,20 @@
         (values t nil)
         (values nil (format nil "temp ~S != ~S" (getf p :temp) (getf c :expect-temp))))))
 
+(defun run-grade-case (c)
+  (multiple-value-bind (tool args ok)
+      (if (string-equal (symbol-name (getf c :format)) "SEXPR")
+          (ailisp:parse-call-sexpr (getf c :output))
+          (ailisp:parse-call-json (getf c :output)))
+    (declare (ignore ok))
+    (let ((got (and (ailisp:grade-call tool args (getf c :expect-tool) (getf c :expect-args)) t))
+          (want (and (getf c :expect) t)))
+      (if (eq got want) (values t nil)
+          (values nil (format nil "graded ~A, expected ~A (tool=~S args=~S)" got want tool args))))))
+
 (defun run-case (testset-name c)
-  (cond ((string-equal testset-name "SAFE-EVAL")       (run-safe-eval-case c))
+  (cond ((string-equal testset-name "GRADE")           (run-grade-case c))
+        ((string-equal testset-name "SAFE-EVAL")       (run-safe-eval-case c))
         ((string-equal testset-name "SCHEMA-VALIDATE") (run-validate-case c))
         ((string-equal testset-name "SCHEMA-RETRY")    (run-retry-case c))
         ((string-equal testset-name "REACT")           (run-react-case c))

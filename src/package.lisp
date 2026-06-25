@@ -23,6 +23,9 @@
    #:tool #:make-tool #:tool-name #:tool-fn #:tool-doc #:react
    ;; rag (pillar 2 via hiai-core KB)
    #:kb-search #:kb-context #:rag #:kb-parse-hits #:kb-tool
+   ;; bench (M7)
+   #:*last-usage* #:*bench-tasks* #:run-bench #:run-task
+   #:parse-call-sexpr #:parse-call-json #:grade-call #:arg=
    ;; json (for ollama)
    #:json-decode #:json-encode))
 

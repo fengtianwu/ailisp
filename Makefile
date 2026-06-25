@@ -17,8 +17,8 @@ agent:
 rag:
 	$(SBCL) --script run-rag.lisp
 
-# Benchmark (M7): Berkeley FCL subset + custom agent tasks vs JSON tool-calling baseline.
+# Benchmark (M7): ailisp s-expr tool calls vs JSON function-calling, same model.
 bench:
-	@echo "TODO(M7): success rate / token cost / latency vs baseline"
+	$(SBCL) --script run-bench.lisp
 
 .PHONY: test test-live bench
