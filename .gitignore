@@ -1,0 +1,18 @@
+# SBCL / Lisp build artifacts
+*.fasl
+*.fas
+*.lx64fsl
+*.abcl
+
+# ASDF / Quicklisp local state
+.cache/
+system-index.txt
+
+# editor / OS
+*~
+.DS_Store
+\#*\#
+.\#*
+
+# test fixtures recorded from live models (regenerate with `make test-live`)
+tests/fixtures/*.json
