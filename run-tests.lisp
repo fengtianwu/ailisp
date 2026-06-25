@@ -4,7 +4,7 @@
 (let ((root (or *load-pathname* *default-pathname-defaults*)))
   (dolist (f '("src/package" "src/reader" "src/schema"
                "src/model" "src/skills" "src/ai" "src/safe-eval" "src/agent" "src/rag" "src/pipe"
-               "bench/grade"
+               "bench/grade" "bench/harness" "bench/bfcl"
                "tests/runner"))
     (handler-bind ((warning #'muffle-warning))
       (load (merge-pathnames (concatenate 'string f ".lisp") root)))))

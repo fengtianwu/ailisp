@@ -21,7 +21,7 @@
         (t (let ((v (ignore-errors (%kw-keys (json-decode (%strip-fences raw))))))
              (if v (values v t) (values nil nil))))))
 
-(defun read-sexpr-safe (s read-package)
+(defun read-sexpr-safe (s &optional read-package)
   "READ S as one s-expression with read-time eval DISABLED (no #. injection),
    using the ailisp readtable so [] / {} parse. Symbols intern in READ-PACKAGE
    so they match the tool symbols passed to safe-eval."

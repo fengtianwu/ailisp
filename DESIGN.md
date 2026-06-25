@@ -289,9 +289,18 @@ NL 条件编译下沉,以及——**真的做出来并 benchmark**(Pel 自承无
 - [ ] M6 安全:文法约束 + 效应/能力 + 成本预算
 - [x] M7 评测框架:s-表达式工具调用 vs JSON function-calling 头对头(`bench/`,`make bench`)
   - [x] 评分器(`bench/grade.lisp`,确定性 10 条测试)+ 任务集 + harness(token/延迟/正确率)
-  - [x] 首跑(n=6,gemma-12b):**s-expr token -23%、延迟更低**;正确率 3 vs 4(小样本不显著,
-    失分在参数规范化 convert/translate,与格式无关)。**关键:能跑出对比数据 —— Pel 零评测的直接超越。**
-  - [ ] 扩样本 + 接 Berkeley FCL 子集 + record/replay 固定(后续)
+  - [x] BFCL-simple 风格子集(n=16,带类型签名,参数逐字以隔离格式变量),gemma-12b:
+    **s-expr 94% 正确 / JSON 81%(+13pts),token −2.4%,延迟 −7%** —— 三指标 s-expr 全胜,
+    失分都是格式解析(JSON 崩 power/prime/dice,s-expr 仅 dice)。**关键:能跑出对比数据 = Pel 零评测的直接超越。**
+  - [x] **真实 BFCL v3 simple 接入**(`bench/bfcl.lisp`,`make bfcl`):命名参数 + BFCL 式打分(可接受值列表、`""`=可省略)
+  - [x] **跨模型对比**(n=30):三模型最初都是 s-expr 24/30 vs JSON 25/30 —— 经 `bfcl-diff` 定位,
+    那 1 分差异**全部来自同一任务 `simple_17` 的布尔写法 artifact**(模型在 s-expr 里写 `True`(符号)、
+    JSON 里写标准 `true`;gt 接受 `T`)。修 `arg=`(布尔各写法等同)后:
+    - gemma-26b:**s-expr 25/30 = JSON 25/30(精度严格平价)**,token −3.1%,延迟 −3%
+    - gemma-12b / 31b:原 24-vs-25 系同一 simple_17 布尔 artifact,修后同样平价(token −3.1% / −7.6%,延迟 −4% / −13%)
+    - **稳健结论:精度严格平价;s-expr 一贯更省 token/更低延迟(模型越大省得越多)。"s-expr 更准/更差"均不成立。**
+  - [x] 修真 bug(MLX 链路暴露):openai 适配器从 `/v1/models` 自动解析模型 id(mlx_lm 不接受 "default");`json-decode` 支持 `\uXXXX`(含代理对)
+  - [ ] 扩样本(全 400)+ 更多模型 + record/replay 固定(后续)
 - [ ] (实验) L3 符号 fallback、L4 NL reader、AST 自动并行、向量检索
 
 ---

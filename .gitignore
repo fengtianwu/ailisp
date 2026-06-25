@@ -16,3 +16,6 @@ system-index.txt
 
 # test fixtures recorded from live models (regenerate with `make test-live`)
 tests/fixtures/*.json
+
+# Berkeley FCL dataset (download separately; see DESIGN.md / `make bfcl`)
+bfcl-data/

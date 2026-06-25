@@ -21,4 +21,8 @@ rag:
 bench:
 	$(SBCL) --script run-bench.lisp
 
+# Real Berkeley FCL (v3 simple). Needs ./bfcl-data/. Optional: make bfcl N=80
+bfcl:
+	$(SBCL) --script run-bfcl.lisp $(N)
+
 .PHONY: test test-live bench

@@ -26,6 +26,8 @@
    ;; bench (M7)
    #:*last-usage* #:*bench-tasks* #:run-bench #:run-task
    #:parse-call-sexpr #:parse-call-json #:grade-call #:arg=
+   ;; bfcl (real Berkeley FCL)
+   #:*bfcl-dir* #:run-bfcl #:parse-named-sexpr #:parse-named-json #:grade-bfcl
    ;; json (for ollama)
    #:json-decode #:json-encode))
 

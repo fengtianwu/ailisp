@@ -9,7 +9,8 @@
     "tests/unit/rag.cases.lisp"
     "tests/unit/pipe.cases.lisp"
     "tests/unit/params.cases.lisp"
-    "tests/unit/grade.cases.lisp"))
+    "tests/unit/grade.cases.lisp"
+    "tests/unit/bfcl.cases.lisp"))
 
 (defun read-cases-file (path)
   "Return the list of (deftestset NAME case...) forms in PATH, read as data."
@@ -145,8 +146,19 @@
       (if (eq got want) (values t nil)
           (values nil (format nil "graded ~A, expected ~A (tool=~S args=~S)" got want tool args))))))
 
+(defun run-bfcl-grade-case (c)
+  (multiple-value-bind (name args)
+      (if (string-equal (symbol-name (getf c :format)) "SEXPR")
+          (ailisp:parse-named-sexpr (getf c :output))
+          (ailisp:parse-named-json (getf c :output)))
+    (let ((got (and name (ailisp:grade-bfcl name args (getf c :gt)) t))
+          (want (and (getf c :expect) t)))
+      (if (eq got want) (values t nil)
+          (values nil (format nil "graded ~A, expected ~A (name=~S args=~S)" got want name args))))))
+
 (defun run-case (testset-name c)
   (cond ((string-equal testset-name "GRADE")           (run-grade-case c))
+        ((string-equal testset-name "BFCL-GRADE")      (run-bfcl-grade-case c))
         ((string-equal testset-name "SAFE-EVAL")       (run-safe-eval-case c))
         ((string-equal testset-name "SCHEMA-VALIDATE") (run-validate-case c))
         ((string-equal testset-name "SCHEMA-RETRY")    (run-retry-case c))

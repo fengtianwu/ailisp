@@ -21,7 +21,7 @@
 (format t "~&[live: hiai-core :8080]~%")
 
 ;; 1) free text (no schema)
-(let ((r (ai "Reply with exactly one word: PONG" :system "Be terse." :params '(:max-tokens 64))))
+(let ((r (ai "Reply with exactly one word: PONG" :system "Be terse." :params '(:max-tokens 512))))
   (check "free-text returns a string" (stringp r) r))
 
 ;; 2) structured extraction (schema-constrained, validated)

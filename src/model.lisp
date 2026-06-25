@@ -24,7 +24,20 @@
 ;;; Talks to {url}/chat/completions. This is the recommended live adapter: hiai-core
 ;;; (../hiai-core) already manages the chat model, embeddings + KB vector search
 ;;; (/kb/search = pillar 2), skills (/skills) and tools (/web/search, /wolfram).
-(defstruct openai-model (url "http://127.0.0.1:8080/v1") (id "default") (max-tokens 2048))
+(defstruct openai-model (url "http://127.0.0.1:8080/v1") (id :auto) (max-tokens 2048))
+
+(defun %openai-resolve-id (m)
+  "Resolve the model id to send. mlx_lm.server REQUIRES the exact id it serves
+   (its /v1/models id, often an absolute path) -- \"default\" makes it try to
+   fetch a repo named default from the Hub. llama-server accepts any id, so using
+   the real id works everywhere. :auto queries /v1/models once and caches."
+  (let ((id (openai-model-id m)))
+    (if (and (stringp id) (not (string-equal id "default")))
+        id
+        (let* ((resp (ignore-errors
+                       (json-decode (%curl-get (concatenate 'string (openai-model-url m) "/models")))))
+               (rid (and resp (%dig resp "data" 0 "id"))))
+          (setf (openai-model-id m) (or rid "default"))))))
 
 (defun %dig (map &rest keys)
   "Walk a json-decoded structure: %map by string key, list by 0-based index."
@@ -38,16 +51,17 @@
                          (list (list (cons "role" "system") (cons "content" system))))
                        (list (list (cons "role" "user") (cons "content" prompt)))))
          (req (json-encode
-               (list (cons "model" (openai-model-id m))
+               (list (cons "model" (%openai-resolve-id m))
                      (cons "messages" msgs)
                      (cons "max_tokens" (or (getf params :max-tokens) (openai-model-max-tokens m)))
                      (cons "temperature" (or (getf params :temp) 0))
                      (cons "stream" :false))))
          (resp (%curl-json (concatenate 'string (openai-model-url m) "/chat/completions") req))
-         (parsed (json-decode resp)))
-    (setf *last-usage* (%dig parsed "usage" "total_tokens"))
-    ;; return the assistant content string; parse-output (ai.lisp) decodes it if :into
-    (%dig parsed "choices" 0 "message" "content")))
+         (parsed (ignore-errors (json-decode resp))))
+    ;; Tolerate empty / error / malformed responses (model loading, 5xx, etc.):
+    ;; return NIL so callers see a parse failure instead of crashing the run.
+    (setf *last-usage* (and parsed (%dig parsed "usage" "total_tokens")))
+    (and parsed (%dig parsed "choices" 0 "message" "content"))))
 
 ;;; ---- ollama (local) ----
 ;;; NOTE: M0 ships this but it is UNVERIFIED (ollama not installed in dev env).
@@ -171,15 +185,27 @@
                          (if (char= (peek) #\,) (next) (return))))
                  (ws) (next)
                  (nreverse acc)))
+             (hex4 () (prog1 (parse-integer string :start i :end (+ i 4) :radix 16)
+                        (incf i 4)))
              (str ()
                (next)
                (with-output-to-string (o)
                  (loop for c = (next) until (char= c #\")
                        do (if (char= c #\\)
                               (let ((e (next)))
-                                (case e (#\n (write-char #\Newline o))
-                                        (#\t (write-char #\Tab o))
-                                        (t (write-char e o))))
+                                (case e
+                                  (#\n (write-char #\Newline o))
+                                  (#\t (write-char #\Tab o))
+                                  (#\r (write-char #\Return o))
+                                  (#\b (write-char (code-char 8) o))
+                                  (#\f (write-char (code-char 12) o))
+                                  (#\u (let ((cp (hex4)))
+                                         (when (<= #xD800 cp #xDBFF)        ; surrogate pair
+                                           (incf i 2)                        ; skip "\u"
+                                           (setf cp (+ #x10000 (ash (- cp #xD800) 10)
+                                                       (- (hex4) #xDC00))))
+                                         (write-char (code-char cp) o)))
+                                  (t (write-char e o))))
                               (write-char c o)))))
              (num ()
                (let ((start i))
@@ -187,5 +213,7 @@
                                               (member (peek) '(#\- #\+ #\. #\e #\E))))
                        do (incf i))
                  (let ((tok (subseq string start i)))
-                   (if (find #\. tok) (read-from-string tok) (parse-integer tok))))))
+                   (if (or (find #\. tok) (find #\e tok) (find #\E tok))
+                       (let ((*read-eval* nil)) (read-from-string tok))
+                       (parse-integer tok))))))
       (prog1 (val) (ws)))))

@@ -19,13 +19,25 @@
     (let ((tool (%bench-mget m :tool)) (args (%bench-mget m :args)))
       (if tool (values tool args t) (values nil nil nil)))))
 
+(defun %boolify (x)
+  "Map any common boolean notation to :true/:false; else return X unchanged.
+   (s-expr models write True/true/#t; JSON true -> T; our reader #t -> T, #f -> NIL.)"
+  (cond ((eq x t) :true) ((eq x :true) :true) ((eq x :false) :false) ((null x) :false)
+        ((symbolp x) (cond ((member (symbol-name x) '("TRUE" "#T" "YES") :test #'string-equal) :true)
+                           ((member (symbol-name x) '("FALSE" "#F" "NO") :test #'string-equal) :false)
+                           (t x)))
+        ((stringp x) (cond ((string-equal x "true") :true) ((string-equal x "false") :false) (t x)))
+        (t x)))
+
 (defun arg= (a b)
-  "Lenient arg comparison (numbers, strings, number<->numeric-string)."
-  (cond ((and (numberp a) (numberp b)) (= a b))
-        ((and (stringp a) (stringp b)) (string-equal (string-trim " " a) (string-trim " " b)))
-        ((and (numberp a) (stringp b)) (ignore-errors (= a (read-from-string b))))
-        ((and (stringp a) (numberp b)) (ignore-errors (= b (read-from-string a))))
-        (t (equal a b))))
+  "Lenient arg comparison: booleans (any notation), numbers, strings, number<->string."
+  (let ((ba (%boolify a)) (bb (%boolify b)))
+    (cond ((or (member ba '(:true :false)) (member bb '(:true :false))) (eq ba bb))
+          ((and (numberp a) (numberp b)) (= a b))
+          ((and (stringp a) (stringp b)) (string-equal (string-trim " " a) (string-trim " " b)))
+          ((and (numberp a) (stringp b)) (ignore-errors (= a (read-from-string b))))
+          ((and (stringp a) (numberp b)) (ignore-errors (= b (read-from-string a))))
+          (t (equal a b)))))
 
 (defun grade-call (tool args expect-tool expect-args)
   "True if TOOL matches EXPECT-TOOL (by name) and ARGS match EXPECT-ARGS."
