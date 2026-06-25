@@ -82,6 +82,42 @@
               :correct (and name (grade-bfcl name args gt))
               :tokens (or tokens 0) :ms ms :raw content)))))
 
+(defun classify-sexpr-failure (s)
+  "Why did parse-named-sexpr reject this raw s-expr output?"
+  (cond
+    ((or (null s) (zerop (length (string-trim '(#\Space #\Newline #\Tab) (or s ""))))) :empty)
+    (t (let ((form (ignore-errors (read-sexpr-safe s))))
+         (cond ((null form) :unreadable)                      ; read error: prose/fences/junk
+               ((not (and (consp form) (symbolp (car form)))) :not-a-call)
+               ((oddp (length (cdr form))) :odd-args)
+               ((notevery #'keywordp (loop for k in (cdr form) by #'cddr collect k)) :positional)
+               (t :other))))))
+
+(defun bfcl-sexpr-diag (&key (n 400) (model *model*))
+  "Run s-expr format only; categorize every parse failure with examples."
+  (let ((qs (%jsonl (merge-pathnames "BFCL_v3_simple.json" *bfcl-dir*)))
+        (cats (make-hash-table :test 'eq)) (ex (make-hash-table :test 'eq))
+        (fails 0) (total 0))
+    (dolist (q (subseq qs 0 (min n (length qs))))
+      (incf total)
+      (let* ((fn (first (%mget q "function")))
+             (content (%timed-call model (%dig q "question" 0 0 "content")
+                                   (bfcl-prompt fn :sexpr) '(:temp 0 :max-tokens 2048))))
+        (unless (parse-named-sexpr content)
+          (incf fails)
+          (let ((c (classify-sexpr-failure content)))
+            (incf (gethash c cats 0))
+            (when (< (length (gethash c ex)) 4)
+              (push (list (%mget q "id") content) (gethash c ex)))))))
+    (format t "~&~%s-expr parse failures: ~A / ~A~%~%" fails total)
+    (maphash (lambda (c cnt)
+               (format t "~&[~A] ~A~%" c cnt)
+               (dolist (e (reverse (gethash c ex)))
+                 (format t "    ~A: ~A~%" (first e)
+                         (let ((s (or (second e) "")))
+                           (subseq s 0 (min 100 (length s)))))))
+             cats)))
+
 (defun bfcl-diff (&key (n 30) (model *model*))
   "Run both formats per task; print only tasks where s-expr and JSON disagree,
    with goal, ground truth, and both raw outputs. Finds the consistent flip."

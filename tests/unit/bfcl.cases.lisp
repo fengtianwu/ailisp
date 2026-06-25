@@ -47,6 +47,18 @@
    :gt {"get_prime_factors" {"number" [450] "formatted" [#t ""]}}
    :expect t)
 
+  ;; LLM writes a JSON-style comma array as a list arg; comma=whitespace recovers it
+  (:name "sexpr-comma-array" :format sexpr
+   :output "(calculate_average :numbers [12, 15, 18])"
+   :gt {"calculate_average" {"numbers" [[12 15 18]]}}
+   :expect t)
+
+  ;; comma tuple as a list arg
+  (:name "sexpr-comma-tuple" :format sexpr
+   :output "(calc_distance :coord (33.4, -112.0))"
+   :gt {"calc_distance" {"coord" [[33.4 -112.0]]}}
+   :expect t)
+
   ;; malformed output
   (:name "json-malformed" :format json
    :output "sure, here you go"

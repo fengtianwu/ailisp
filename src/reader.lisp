@@ -28,4 +28,7 @@
   (set-dispatch-macro-character #\# #\t
     (lambda (s c n) (declare (ignore s c n)) t))
   (set-dispatch-macro-character #\# #\f
-    (lambda (s c n) (declare (ignore s c n)) nil)))
+    (lambda (s c n) (declare (ignore s c n)) nil))
+  ;; Comma = whitespace (Clojure-style). LLMs write list/tuple args JSON-style
+  ;; ([1, 2], (a, b)); without this they fail to read. `'` (quote) stays as-is.
+  (set-syntax-from-char #\, #\Space))

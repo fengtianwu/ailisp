@@ -300,7 +300,19 @@ NL 条件编译下沉,以及——**真的做出来并 benchmark**(Pel 自承无
     - gemma-12b / 31b:原 24-vs-25 系同一 simple_17 布尔 artifact,修后同样平价(token −3.1% / −7.6%,延迟 −4% / −13%)
     - **稳健结论:精度严格平价;s-expr 一贯更省 token/更低延迟(模型越大省得越多)。"s-expr 更准/更差"均不成立。**
   - [x] 修真 bug(MLX 链路暴露):openai 适配器从 `/v1/models` 自动解析模型 id(mlx_lm 不接受 "default");`json-decode` 支持 `\uXXXX`(含代理对)
-  - [ ] 扩样本(全 400)+ 更多模型 + record/replay 固定(后续)
+  - [x] **全量 n=400(gemma-26b)—— 权威结果,推翻 n=30 的"平价"**:
+    - s-expr:解析 92% (368/400),正确 **74%** (297/400),tok 327,延迟 4324ms
+    - JSON:解析 **100%** (400/400),正确 **79%** (317/400),tok 350,延迟 4739ms
+    - **诚实修正:规模化后 JSON 更可靠(模型为 JSON function-calling 重度调优)。s-expr 有 32 个解析失败(JSON 0),
+      正确率落后 5pts,主要由解析失败拉低。s-expr 仍更省(token −6.5%、延迟 −9%)。**
+  - [x] **诊断 32 个 s-expr 解析失败**(`bfcl-sexpr-diag`):全部是模型把复合参数写成 JSON/Python 风格
+    ——逗号数组 `[1, 3]`、元组 `(33.4, -112.0)`、单引号字符 `'G'`,CL reader 读不了(`,`=unquote、`'`=quote)。
+    非位置参数、非乱码。
+  - [x] **数据驱动修复**:reader 把逗号当空白(Clojure 先例)。**修复后全 400(gemma-26b)**:
+    s-expr 解析 92%→**98%**(391/400)、正确 74%→**78%**(311);JSON 仍 100%/79%。
+    **差距 −5pts→−2pts(78% vs 79%,~6 任务);s-expr token −6.3%、延迟 −8%。** 残留 9 个失败为 `'G'` 类 Python-ism。
+    **最终结论:有原则的 reader 改动后,s-expr 准确率基本追平 JSON 且更省成本;那 5pts 主要是逗号数组解析,非格式本质劣势。**
+  - [ ] 更多模型 + 全量复跑 12b/31b + record/replay 固定(后续)
 - [ ] (实验) L3 符号 fallback、L4 NL reader、AST 自动并行、向量检索
 
 ---
