@@ -1,15 +1,10 @@
-;;;; ~> threading macro -- deterministic (forms are pure-evaluated, no model).
+;;;; EVAL testset -- deterministic (forms are pure-evaluated, no model).
 ;;;; runner evaluates :form and compares to :value.
 (in-package :ailisp/tests)
 
 (deftestset eval
 
-  (:name "pipe-inject-right"   :form (~> 5 (- _ 100))            :value -95)
-  (:name "pipe-inject-left"    :form (~> 5 (- 100 _))            :value 95)
-  (:name "pipe-default-first"  :form (~> 3 (+ 4))                :value 7)
-  (:name "pipe-bare-symbol"    :form (~> -9 (abs))               :value 9)
-  (:name "pipe-chain"          :form (~> 3 (+ _ 4) (* _ 2))      :value 14)
-  (:name "pipe-nested-_"       :form (~> 2 (list (* _ _) _))     :value (4 2))
+  ;; {} map constructor evaluates values (keyword keys literal)
   (:name "map-ctor-evaluates-values"
    :form (%map :a (+ 1 1) :b 30)                                  :value (%map :a 2 :b 30))
 

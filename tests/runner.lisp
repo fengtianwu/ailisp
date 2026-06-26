@@ -7,7 +7,7 @@
     "tests/unit/schema.cases.lisp"
     "tests/unit/agent.cases.lisp"
     "tests/unit/rag.cases.lisp"
-    "tests/unit/pipe.cases.lisp"
+    "tests/unit/eval.cases.lisp"
     "tests/unit/params.cases.lisp"
     "tests/unit/grade.cases.lisp"
     "tests/unit/bfcl.cases.lisp"))

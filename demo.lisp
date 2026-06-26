@@ -4,7 +4,7 @@
 (setf sb-impl::*default-external-format* :utf-8)
 (let ((root (or *load-pathname* *default-pathname-defaults*)))
   (dolist (f '("src/package" "src/reader" "src/schema" "src/model" "src/skills"
-               "src/ai" "src/safe-eval" "src/agent" "src/rag" "src/pipe"))
+               "src/ai" "src/safe-eval" "src/agent" "src/rag"))
     (handler-bind ((warning #'muffle-warning))
       (load (merge-pathnames (concatenate 'string f ".lisp") root)))))
 (in-package :ailisp)
@@ -52,9 +52,5 @@
                                 :doc "查某城市今天天气,参数是城市名"))))
     (multiple-value-bind (ans calls transcript) (react "北京今天适合穿毛衣吗?" tools :max-steps 4)
       (format t "=> ~A   (~A 次工具调用)~%transcript:~%~A~%" ans calls transcript))))
-
-;;; 5) ~> pipe (pure, no model)  -- structural sugar
-(demo "5. 管道 ~>"
-  (format t "(~~> 3 (+ _ 4) (* _ 2)) => ~S~%" (~> 3 (+ _ 8) (* _ 1332))))
 
 (format t "~&~%(改 demo.lisp 里的提示词/问题再跑 `make demo`;或 `make repl` 进交互。)~%")

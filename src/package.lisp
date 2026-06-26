@@ -15,8 +15,6 @@
    ;; ai
    #:ai #:llm #:assemble-messages #:ai-error #:ai-error-reason #:read-sexpr-safe #:resolve-params
    #:*settings* #:with-settings #:%merge-params #:%merge-plist
-   ;; pipe
-   #:~>
    ;; skills
    #:*hiai-url* #:fetch-skill #:apply-skills
    ;; agent

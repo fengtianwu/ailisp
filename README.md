@@ -39,7 +39,7 @@ react / rag / plan-execute                                        ← agentic �
 - **模型是值**:`(make-openai-model :url ... :id ...)`;默认全局 `*model*`。
 - **采样参数**:`:params '(:temp 0.7 :top-p 0.9 :top-k 40 :max-tokens 512 :seed 42 ...)`,或 `:auto`(按意图定温度)。
 - **settings**:全局 `*settings*` profile + 单次覆盖,`:params` 深合并;`with-settings` 临时改。
-- **`[]`/`{}`/`~>`** reader 糖:`[a b c]` 数据列表、`{:k v}` map、`~>` 管道(`_` 为插点)。
+- **`[]`/`{}`** reader 糖:`[a b c]` 数据列表、`{:k v}` map。
 
 ## 现状
 
@@ -79,7 +79,6 @@ make compose     # plan-execute vs JSON 工具链(多步 + 控制流)
 ```lisp
 (ai "抽取姓名年龄:王芳 31 岁" :into '(%map :name string :age int))   ; => (%map :name "王芳" :age 31)
 (llm "讲个一句话笑话" :params '(:temp 1.0))                          ; 裸文本
-(~> 3 (+ _ 4) (* _ 2))                                              ; => 14
 ```
 
 ## 与 Pel / 既有工作
