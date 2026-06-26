@@ -48,8 +48,9 @@ Respond with EXACTLY ONE s-expression and nothing else:~%~
            (return-from react (values (second step) calls transcript)))
           ((sym= (car step) "CALL")
            (incf calls)
-           (multiple-value-bind (status detail)
-               (safe-eval (second step) :tools names :env env)
-             (setf transcript
-                   (format nil "~A~&(call ~S) => ~(~A~): ~S" transcript (second step) status detail)))))))
+           ;; accept both (call (fn args...)) [nested] and (call fn args...) [flat]
+           (let ((form (if (consp (second step)) (second step) (cdr step))))
+             (multiple-value-bind (status detail) (safe-eval form :tools names :env env)
+               (setf transcript
+                     (format nil "~A~&~S => ~(~A~): ~S" transcript form status detail))))))))
     (values :max-steps-exhausted calls transcript)))
