@@ -44,7 +44,13 @@
     (:name "cf-max"      :goal "What is the largest population among all the cities?"               :expected 37)
     (:name "cf-count2"   :goal "How many cities have a population over 25 million? Multiply that count by 10." :expected 30)
     (:name "cf-filtsum"  :goal "What is the total price of all items that cost more than 1?"        :expected 7)
-    (:name "cf-count3"   :goal "How many items cost 2 or more?"                                     :expected 2)))
+    (:name "cf-count3"   :goal "How many items cost 2 or more?"                                     :expected 2)
+    ;; ---- harder control flow: or / range / conditional / relative filter / nested ----
+    (:name "cf-or"       :goal "How many cities have a population over 30 or under 15?"             :expected 3)
+    (:name "cf-range"    :goal "How many cities have a population between 15 and 35 (inclusive)?"    :expected 3)
+    (:name "cf-cond"     :goal "If Tokyo's population is over 30, give the combined population of all cities; otherwise give 0." :expected 128)
+    (:name "cf-relfilt"  :goal "How many items cost more than a banana does?"                       :expected 2)
+    (:name "cf-nested"   :goal "Count the cities with population over 25; if that count is more than 2, return 100, otherwise 0." :expected 100)))
 
 (defun compose= (a b)
   (cond ((and (numberp a) (numberp b)) (= a b))
@@ -83,35 +89,10 @@
           :calls calls :tokens tok :raw last-raw
           :ms (/ (* 1000 (- (get-internal-real-time) t0)) internal-time-units-per-second))))
 
-;;; ---- approach 2: real JSON function-calling (tools API, sequential round-trips) ----
-(defparameter *compose-param-order*
-  '(("add" "a" "b") ("sub" "a" "b") ("mul" "a" "b") ("gt" "a" "b")
-    ("get_population" "city") ("get_user_city" "name") ("get_price" "item")
-    ("get_cities") ("get_items")))
-
-(defun %fn-schema (name params doc)
-  (list (cons "type" "function")
-        (cons "function"
-              (list (cons "name" name) (cons "description" doc)
-                    (cons "parameters"
-                          (list (cons "type" "object")
-                                (cons "properties"
-                                      (if params
-                                          (mapcar (lambda (p) (cons p (list (cons "type" "string")))) params)
-                                          :emptyobj))
-                                (cons "required" (or params :emptyarr))))))))
-
-(defparameter *compose-tools-schema*
-  (list (%fn-schema "add" '("a" "b") "add two integers")
-        (%fn-schema "sub" '("a" "b") "subtract b from a")
-        (%fn-schema "mul" '("a" "b") "multiply two integers")
-        (%fn-schema "gt" '("a" "b") "true if a > b")
-        (%fn-schema "get_population" '("city") "population (millions) of a city")
-        (%fn-schema "get_user_city" '("name") "the city where a person lives")
-        (%fn-schema "get_price" '("item") "unit price of an item")
-        (%fn-schema "get_cities" '() "list of all cities")
-        (%fn-schema "get_items" '() "list of all items")))
-
+;;; ---- approach 2: JSON tool-chaining via content (portable across runtimes) ----
+;;; mlx_lm.server doesn't surface message.tool_calls, so we use a content-JSON
+;;; protocol (model emits {tool,args}/{final} as text, we parse + loop). Symmetric
+;;; with plan-execute (both write to content; we parse both) and runtime-independent.
 (defun %num (x)
   "Coerce a numeric STRING to a number; leave non-numeric strings (names) alone."
   (if (and (stringp x) (plusp (length x))
@@ -119,57 +100,33 @@
       (or (ignore-errors (read-from-string x)) x)
       x))
 
-(defun %compose-call (name argmap)
-  "Apply the named tool to args pulled from ARGMAP (keyword-keyed %map) in order."
-  (let ((order (cdr (assoc name *compose-param-order* :test #'string-equal)))
-        (fn (cdr (assoc name *compose-env*
-                        :key (lambda (s) (string-downcase (symbol-name s))) :test #'string-equal))))
-    (when fn
-      (apply fn (mapcar (lambda (p) (%num (%bench-mget argmap (intern (string-upcase p) :keyword)))) order)))))
+(defun %has-key (m k)
+  (and (consp m) (sym= (car m) "%MAP")
+       (loop for kk in (cdr m) by #'cddr thereis (and (keywordp kk) (eq kk k)))))
 
-(defun %asst-msg (name argstr id)
-  (list (cons "role" "assistant") (cons "content" :null)
-        (cons "tool_calls" (list (list (cons "id" id) (cons "type" "function")
-                                       (cons "function" (list (cons "name" name)
-                                                              (cons "arguments" argstr))))))))
-(defun %tool-msg (id result)
-  (list (cons "role" "tool") (cons "tool_call_id" id) (cons "content" (princ-to-string result))))
-
-(defun %all-numbers (s)
-  (let ((out '()) (i 0) (n (length s)))
-    (loop while (< i n) do
-      (let ((c (char s i)))
-        (if (or (digit-char-p c)
-                (and (char= c #\-) (< (1+ i) n) (digit-char-p (char s (1+ i)))))
-            (multiple-value-bind (v j) (read-from-string s nil nil :start i)
-              (when (numberp v) (push v out))
-              (setf i (if (and j (> j i)) j (1+ i))))
-            (incf i))))
-    (nreverse out)))
-
-(defun %extract-final (s)
-  "Pull a gradeable value from the model's final natural-language answer."
-  (cond ((null s) :none)
-        ((search "true" s :test #'char-equal) t)
-        ((and (search "yes" s :test #'char-equal) (not (search " no" s :test #'char-equal))) t)
-        (t (let ((nums (%all-numbers s))) (if nums (car (last nums)) s)))))
-
-(defun run-json-chain (task model &key (max-steps 10))
-  (let ((messages (list (list (cons "role" "user") (cons "content" (getf task :goal)))))
-        (calls 0) (tok 0) (final :none) (t0 (get-internal-real-time)))
+(defun run-json-chain (task model &key (max-steps 12))
+  (let ((transcript "") (calls 0) (tok 0) (final :none) (t0 (get-internal-real-time))
+        (sys (format nil "Solve the task by calling tools ONE per turn. Tools:~%~A~%~%Reply with ONLY JSON: {\"tool\": \"name\", \"args\": [arg, ...]} to call a tool, or {\"final\": <answer>} when done. Use tools for ALL computation."
+                     *compose-sigs*)))
     (block done
       (dotimes (i max-steps)
-        (multiple-value-bind (content name argstr id ntok)
-            (%chat-raw model messages :tools *compose-tools-schema*)
-          (incf calls) (incf tok (or ntok 0))
+        (let* ((prompt (format nil "Task: ~A~%~%Results so far:~%~A" (getf task :goal)
+                               (if (string= transcript "") "(none)" transcript)))
+               (*last-usage* nil)
+               (raw (call-model model prompt :system sys :params '(:temp 0 :max-tokens 1024)))
+               (m (ignore-errors (%kw-keys (json-decode (%strip-fences raw))))))
+          (incf calls) (incf tok (or *last-usage* 0))
           (cond
-            (name (let* ((argmap (ignore-errors (%kw-keys (json-decode (or argstr "{}")))))
-                         (result (or (ignore-errors (%compose-call name argmap)) "error")))
-                    (setf messages (append messages (list (%asst-msg name argstr id)
-                                                          (%tool-msg id result))))))
-            ((and content (plusp (length (string-trim '(#\Space #\Newline) content))))
-             (setf final (%extract-final content)) (return-from done))
-            (t (return-from done))))))
+            ((null m) (return-from done))                               ; unparseable
+            ((%has-key m :final) (setf final (%bench-mget m :final)) (return-from done))
+            (t (let* ((tname (%bench-mget m :tool)) (args (%bench-mget m :args))
+                      (fn (cdr (assoc (and tname (string-downcase (string tname))) *compose-env*
+                                      :key (lambda (s) (string-downcase (symbol-name s))) :test #'equal)))
+                      (res (if fn (or (ignore-errors
+                                       (apply fn (mapcar #'%num (if (listp args) args (list args)))))
+                                      "error")
+                               "error: unknown tool")))
+                 (setf transcript (format nil "~A~A(~{~A~^, ~}) => ~A~%" transcript tname args res))))))))
     (list :correct (and (not (eq final :none)) (compose= final (getf task :expected)))
           :calls calls :tokens tok
           :ms (/ (* 1000 (- (get-internal-real-time) t0)) internal-time-units-per-second))))

@@ -341,7 +341,16 @@ NL 条件编译下沉,以及——**真的做出来并 benchmark**(Pel 自承无
     - 诊断:失败**不是不会写 Lisp**(模型写出的 `(reduce (lambda...) (mapcar (lambda...) (get_cities)))` 逻辑正确),
       而是 ① Python 空参 `foo()`(已修)② 推理模型一次性合成的推理开销失控。
   - **总结论:代码合成的优劣高度依赖模型——简单组合(推理模型也)赢;控制流需要"写控制流不费大量推理"的模型(代码模型)。**
-  - [ ] **决定性实验:换 qwen-coder-next(代码模型,写 Lisp 强、推理少)跑控制流**;更复杂任务;多 provider
+  - [x] **决定性实验:qwen-coder-next(代码模型)跑同样 14 任务** ——
+    - **plan-execute 12/14、1.1 次调用、总 366 token(~26/任务);对比 gemma 推理模型同方法 ~71000 token → ~200×**
+    - 控制流任务在代码模型上几乎全对、每个 ~20 token(直接写 `(reduce ... (mapcar #'get_population (get_cities)))`,零推理前言)
+    - JSON-FC 基线在此**无法对照**:qwen 走 mlx_lm.server(0.31.3),返回 `finish_reason:tool_calls` 但 message 里**不含 tool_calls**(空)——服务器限制,只有 GGUF/llama 运行时能跑 FC 基线。
+    - **核心结论:代码合成的价值真实且巨大,但取决于模型——代码模型让多步/控制流既正确又极省(1 次调用、~26 token);推理模型则被一次性合成的推理开销拖垮。这正是 ailisp 押注 homoiconicity 的回报:给 LLM 一门它能流畅书写的语言。**
+  - [x] **公平同模型对照(content-JSON 基线,跨运行时可移植)+ 5 个更难控制流(or/range/conditional/relative/nested),qwen-coder 19 任务:**
+    - **plan-execute 15/19、1.2 次、614 token、789ms;JSON 工具链 14/19、7.4 次、2558 token、4435ms**
+    - **plan-execute:正确率追平/略胜,往返 −6×、token −76%、延迟 −82%。** 难控制流上 JSON 往返爆炸(cf-count2/nested/filtsum 各 12 次撞上限且常错)。
+    - (mlx_lm.server 不返回 tool_calls → 改用 content-JSON 协议:两边都输出到 content、都由我们解析,对称且运行时无关。)
+  - [ ] (可选)更复杂任务 / 非本地 provider / plan-execute 残留失败(cf-cond/nested)诊断
 - [ ] (实验) L3 符号 fallback、L4 NL reader、AST 自动并行、向量检索
 
 ---
