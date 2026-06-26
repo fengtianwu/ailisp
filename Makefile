@@ -26,3 +26,7 @@ bfcl:
 	$(SBCL) --script run-bfcl.lisp $(N)
 
 .PHONY: test test-live bench
+
+# Composability bench: plan-execute (1 s-expr program) vs JSON tool-chaining.
+compose:
+	$(SBCL) --script run-compose.lisp

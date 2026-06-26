@@ -78,7 +78,9 @@
                               (eval form))))
                  (values :ok val))
              (budget-exceeded () (values :abort :budget))
-             (sb-ext:timeout () (values :abort :timeout))))
+             (sb-ext:timeout () (values :abort :timeout))
+             ;; LLM-generated code can error in countless ways; never crash the host.
+             (error () (values :abort :eval-error))))
       (%restore-env saved))))
 
 (defun safe-eval (form &key tools env limits)

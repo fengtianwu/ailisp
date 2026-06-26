@@ -66,6 +66,25 @@
                                        (%dig parsed "usage" "total_tokens"))))
     (and parsed (%dig parsed "choices" 0 "message" "content"))))
 
+(defun %chat-raw (model messages &key tools (max-tokens 1024))
+  "Lower-level chat call with a full MESSAGES array (+ optional OpenAI function
+   TOOLS schema). Returns (values content tool-name arg-json-string tool-call-id tokens)."
+  (let* ((req (json-encode (append (list (cons "model" (%openai-resolve-id model))
+                                         (cons "messages" messages)
+                                         (cons "temperature" 0)
+                                         (cons "max_tokens" max-tokens)
+                                         (cons "stream" :false))
+                                   (when tools (list (cons "tools" tools))))))
+         (resp (%curl-json (concatenate 'string (openai-model-url model) "/chat/completions") req))
+         (p (ignore-errors (json-decode resp)))
+         (msg (and p (%dig p "choices" 0 "message")))
+         (tc (and msg (%dig msg "tool_calls" 0))))
+    (values (and msg (%mget msg "content"))
+            (and tc (%dig tc "function" "name"))
+            (and tc (%dig tc "function" "arguments"))
+            (and tc (%mget tc "id"))
+            (and p (or (%dig p "usage" "completion_tokens") (%dig p "usage" "total_tokens"))))))
+
 ;;; ---- ollama (local) ----
 ;;; NOTE: M0 ships this but it is UNVERIFIED (ollama not installed in dev env).
 (defstruct ollama-model (url "http://localhost:11434") (id "qwen2.5"))

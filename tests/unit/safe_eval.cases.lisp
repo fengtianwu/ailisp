@@ -75,6 +75,12 @@
    :form  (loop)                   ; 死循环必须被中止,而非挂死
    :expect :abort :reason :timeout)
 
+  ;; LLM-generated code that errors at runtime must abort gracefully, not crash.
+  (:name "abort-runtime-error"
+   :tools ()
+   :form  (car 5)                  ; type error inside generated code
+   :expect :abort :reason :eval-error)
+
   (:name "abort-over-budget"
    :tools (ask-llm)                ; 工具内部会花钱;预算 0 ⇒ 第一次调用即中止
    :env   ((ask-llm . (lambda (q) (charge 0.01) "...")))

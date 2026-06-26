@@ -323,6 +323,17 @@ NL 条件编译下沉,以及——**真的做出来并 benchmark**(Pel 自承无
     - **"s-expr 更省成本"经正确测量不成立。** ⇒ ailisp 的价值须落在 homoiconicity / `eval` / 宏 / agent=REPL,
       而非简单工具调用的 token 成本。诚实记录,停止调参(避免 p-hacking)。
   - [ ] (可选)多 provider / 多任务类目(parallel/multiple)/ record-replay 固定
+
+- [x] M8 组合性实验:plan-execute(代码合成)vs JSON function-calling(`bench/compose.lisp`,`make compose`)
+  - 8 个多步依赖任务;JSON 侧用**真 function-calling API**(tools schema → tool_calls → 回灌 tool 结果 → 多轮)
+  - gemma-12b:**plan-execute 正确 5/8、1 次调用、1588 tok、5957ms;JSON 8/8、4.8 次、2407 tok、10197ms**
+  - **plan-execute:token −34%、延迟 −42%、往返 1 vs 4.8(组合性效率大胜);但可靠性 5/8 vs 8/8**
+    (3 个失败是模型一次性写出畸形嵌套程序,如 `(get_population ("Tokyo"))`)
+  - **结论:ailisp 的价值在组合性效率(多步省 token/往返),而非单次调用成本(BFCL 已证持平)。**
+    可靠性缺口可改(提示/示例、出错重试、约束生成);省 token 是结构性优势。
+  - 安全修复:`safe-eval` 现兜住 LLM 生成代码的任意运行时错误(`:abort :eval-error`),不再崩主机。
+  - 基础设施:`%chat-raw`(messages 数组 + tools + tool_calls 解析)= 真 function-calling 支持。
+  - [ ] (可选)plan-execute 加出错重试一次 / 更大模型 / 更复杂任务(循环、过滤、map)
 - [ ] (实验) L3 符号 fallback、L4 NL reader、AST 自动并行、向量检索
 
 ---
