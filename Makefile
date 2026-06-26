@@ -30,3 +30,11 @@ bfcl:
 # Composability bench: plan-execute (1 s-expr program) vs JSON tool-chaining.
 compose:
 	$(SBCL) --script run-compose.lisp
+
+# Scripted demos (edit prompts in demo.lisp).
+demo:
+	$(SBCL) --script demo.lisp
+
+# Interactive ailisp REPL.
+repl:
+	$(SBCL) --load repl.lisp
