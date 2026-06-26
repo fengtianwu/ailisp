@@ -326,14 +326,14 @@ NL 条件编译下沉,以及——**真的做出来并 benchmark**(Pel 自承无
 
 - [x] M8 组合性实验:plan-execute(代码合成)vs JSON function-calling(`bench/compose.lisp`,`make compose`)
   - 8 个多步依赖任务;JSON 侧用**真 function-calling API**(tools schema → tool_calls → 回灌 tool 结果 → 多轮)
-  - gemma-12b:**plan-execute 正确 5/8、1 次调用、1588 tok、5957ms;JSON 8/8、4.8 次、2407 tok、10197ms**
-  - **plan-execute:token −34%、延迟 −42%、往返 1 vs 4.8(组合性效率大胜);但可靠性 5/8 vs 8/8**
-    (3 个失败是模型一次性写出畸形嵌套程序,如 `(get_population ("Tokyo"))`)
-  - **结论:ailisp 的价值在组合性效率(多步省 token/往返),而非单次调用成本(BFCL 已证持平)。**
-    可靠性缺口可改(提示/示例、出错重试、约束生成);省 token 是结构性优势。
-  - 安全修复:`safe-eval` 现兜住 LLM 生成代码的任意运行时错误(`:abort :eval-error`),不再崩主机。
+  - 初版(无示例提示):plan-execute 5/8(3 个畸形程序如 `(get_population ("Tokyo"))`)、1 次、1588tok;JSON 8/8、4.8 次、2407tok。
+  - **加提示示例(正确嵌套范例 + "别多套括号")+ 出错重试安全网后,gemma-12b 最终:**
+    - **plan-execute 8/8、1.0 次调用、1771 输出 tok、6658ms;JSON 8/8、4.8 次、2407 tok、10118ms**
+    - **正确率追平(8/8 = 8/8),plan-execute 往返 1 vs 4.8、输出 token −26%、延迟 −34%。** 8/8 来自提示改进(本跑未触发重试)。
+  - **结论(配合 BFCL 单次持平):ailisp 价值在多步组合效率(结构性:1 次 vs N 次往返),非单次调用成本。**
+  - 安全修复:`safe-eval` 兜住 LLM 生成代码的任意运行时错误(`:abort :eval-error` + 错误消息供重试),不崩主机。
   - 基础设施:`%chat-raw`(messages 数组 + tools + tool_calls 解析)= 真 function-calling 支持。
-  - [ ] (可选)plan-execute 加出错重试一次 / 更大模型 / 更复杂任务(循环、过滤、map)
+  - [ ] (可选)更大模型 / 更复杂任务(循环、map、过滤、条件)看优势是否放大 / 多 provider
 - [ ] (实验) L3 符号 fallback、L4 NL reader、AST 自动并行、向量检索
 
 ---

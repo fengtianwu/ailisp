@@ -42,19 +42,34 @@
         ((and (numberp a) (stringp b)) (ignore-errors (= a (read-from-string b))))
         (t (equal a b))))
 
-;;; ---- approach 1: plan-execute (one s-expr program, eval'd once) ----
-(defun run-plan-execute (task model)
+;;; ---- approach 1: plan-execute (one s-expr program; retry on parse/eval error) ----
+(defun run-plan-execute (task model &key (max-tries 3))
+  "Emit ONE s-expr program and eval it. On parse/eval FAILURE (not on a wrong-but-
+   valid result — that would leak the answer), feed the error back and retry."
   (let* ((tools (mapcar #'car *compose-env*))
-         (sys (format nil "Tools available (call by name):~%~A~%~%Write ONE s-expression program that computes the answer. Nest calls freely; use tools for ALL computation. Reply with ONLY the s-expression, no prose."
+         (sys (format nil "Tools available (call by name):~%~A~%~%Write ONE s-expression program that computes the answer. Nest calls freely; pass arguments directly, e.g. (mul (add 1 2) (get_population \"Paris\")) -- do NOT wrap args in extra parentheses. Use tools for ALL computation. Reply with ONLY the s-expression, no prose."
                       *compose-sigs*))
-         (t0 (get-internal-real-time)) (*last-usage* nil)
-         (raw (call-model model (getf task :goal) :system sys :params '(:temp 0 :max-tokens 2048)))
-         (ms (/ (* 1000 (- (get-internal-real-time) t0)) internal-time-units-per-second))
-         (form (ignore-errors (read-sexpr-safe raw))))
-    (multiple-value-bind (status val)
-        (if form (safe-eval form :tools tools :env *compose-env*) (values :deny nil))
-      (list :correct (and (eq status :ok) (compose= val (getf task :expected)))
-            :calls 1 :tokens (or *last-usage* 0) :ms ms :raw raw))))
+         (calls 0) (tok 0) (t0 (get-internal-real-time)) (feedback nil)
+         (result :none) (last-raw nil))
+    (block done
+      (dotimes (i max-tries)
+        (let* ((prompt (if feedback
+                           (format nil "~A~%~%Your previous program:~%  ~A~%failed: ~A~%Reply with ONLY the corrected s-expression."
+                                   (getf task :goal) (car feedback) (cdr feedback))
+                           (getf task :goal)))
+               (*last-usage* nil)
+               (raw (call-model model prompt :system sys :params '(:temp 0 :max-tokens 2048)))
+               (form (ignore-errors (read-sexpr-safe raw))))
+          (incf calls) (incf tok (or *last-usage* 0)) (setf last-raw raw)
+          (if (null form)
+              (setf feedback (cons raw "could not be parsed as a single s-expression"))
+              (multiple-value-bind (status val msg) (safe-eval form :tools tools :env *compose-env*)
+                (if (eq status :ok)
+                    (progn (setf result val) (return-from done))
+                    (setf feedback (cons raw (or msg (princ-to-string status))))))))))
+    (list :correct (and (not (eq result :none)) (compose= result (getf task :expected)))
+          :calls calls :tokens tok :raw last-raw
+          :ms (/ (* 1000 (- (get-internal-real-time) t0)) internal-time-units-per-second))))
 
 ;;; ---- approach 2: real JSON function-calling (tools API, sequential round-trips) ----
 (defparameter *compose-param-order*
