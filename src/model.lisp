@@ -145,6 +145,8 @@
     ((eq x :false) (write-string "false" s))
     ((eq x :true)  (write-string "true" s))
     ((eq x :null)  (write-string "null" s))
+    ((eq x :emptyobj) (write-string "{}" s))
+    ((eq x :emptyarr) (write-string "[]" s))
     ((null x) (write-string "null" s))
     ((stringp x) (%jenc-str x s))
     ((integerp x) (format s "~D" x))

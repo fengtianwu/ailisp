@@ -30,6 +30,19 @@
    :form  (summarize (get-weather "上海"))
    :expect :ok)
 
+  ;; higher-order: lambda params + map/count over a tool result must be allowed
+  (:name "allow-higher-order-lambda"
+   :tools (get_pop)
+   :env   ((get_pop . (lambda (c) (if (string= c "A") 5 1))))
+   :form  (count-if (lambda (c) (> (get_pop c) 2)) (list "A" "B" "A"))
+   :expect :ok :value 2)
+
+  ;; an unauthorized call hidden inside a lambda body is still denied
+  (:name "deny-inside-lambda"
+   :tools (get_pop)
+   :form  (mapcar (lambda (c) (http-get c)) (list "a"))
+   :expect :deny :reason :network)
+
   ;; ---- DENY:静态 code-walk(不调模型,不执行)----
   (:name "deny-unauthorized-tool"
    :tools (get-weather)            ; web-search 未授权

@@ -13,6 +13,8 @@
    :expect-tool get-weather :expect-args ("北京") :expect nil)
   (:name "sexpr-malformed"    :format sexpr :output "I think you should call get-weather"
    :expect-tool get-weather :expect-args ("北京") :expect nil)
+  (:name "sexpr-python-noarg" :format sexpr :output "(get_cities())"   ; foo() -> (foo)
+   :expect-tool get_cities :expect-args () :expect t)
   (:name "sexpr-fenced"       :format sexpr
    :output "```
 (multiply 6 7)

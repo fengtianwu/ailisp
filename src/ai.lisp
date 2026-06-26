@@ -35,6 +35,19 @@
                             (write-char #\" out) (setf i (1+ j)))
                      (progn (write-char c out) (incf i))))))))
 
+(defun %normalize-empty-calls (s)
+  "Rewrite Python-style no-arg calls `foo()` -> `foo` (Lisp wants (foo)). Only
+   touches `()` immediately following an identifier char, so a real empty list `()`
+   or `(f ())` is untouched."
+  (with-output-to-string (out)
+    (let ((i 0) (n (length s)))
+      (loop while (< i n) do
+        (if (and (char= (char s i) #\() (< (1+ i) n) (char= (char s (1+ i)) #\))
+                 (> i 0) (let ((p (char s (1- i))))
+                           (or (alphanumericp p) (member p '(#\_ #\- #\? #\. #\/ #\*)))))
+            (incf i 2)
+            (progn (write-char (char s i) out) (incf i)))))))
+
 (defun read-sexpr-safe (s &optional read-package)
   "READ S as one s-expression with read-time eval DISABLED (no #. injection),
    using the ailisp readtable so [] / {} parse. Symbols intern in READ-PACKAGE
@@ -45,7 +58,7 @@
         (*package* (cond ((packagep read-package) read-package)
                          (read-package (find-package read-package))
                          (t (find-package :ailisp))))
-        (body (%strip-fences s)))
+        (body (%normalize-empty-calls (%strip-fences s))))
     (handler-case (values (read-from-string body))
       (error ()
         (handler-case (values (read-from-string (%normalize-py-strings body)))

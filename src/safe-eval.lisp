@@ -25,8 +25,12 @@
 
 (defparameter *safe-builtins*
   '("+" "-" "*" "/" "=" "<" ">" "<=" ">=" "1+" "1-" "MIN" "MAX" "MOD" "ABS"
-    "IF" "PROGN" "QUOTE" "LET" "LET*" "WHEN" "UNLESS" "NOT" "AND" "OR"
-    "LIST" "CONS" "CAR" "CDR" "LOOP"))
+    "FLOOR" "CEILING" "ROUND" "TRUNCATE" "EVENP" "ODDP" "ZEROP" "PLUSP" "MINUSP"
+    "IF" "PROGN" "QUOTE" "LET" "LET*" "WHEN" "UNLESS" "NOT" "AND" "OR" "COND"
+    "LIST" "CONS" "CAR" "CDR" "FIRST" "REST" "SECOND" "THIRD" "NTH" "ELT" "LENGTH"
+    "LOOP" "LAMBDA" "FUNCTION" "FUNCALL" "APPLY"
+    "MAPCAR" "MAPCAN" "REDUCE" "REMOVE-IF" "REMOVE-IF-NOT" "COUNT-IF" "COUNT"
+    "FIND-IF" "POSITION-IF" "EVERY" "SOME" "REVERSE" "SORT" "APPEND" "REMOVE"))
 
 (defun classify (op tools)
   "Return a deny-reason keyword for operator OP, or NIL if allowed."
@@ -37,14 +41,25 @@
           ((member n *safe-builtins* :test #'string-equal) nil); safe builtin
           (t :unauthorized-symbol))))                          ; everything else
 
+(defun walk-list (forms tools)
+  (dolist (f forms nil)
+    (let ((r (walk-check f tools))) (when r (return-from walk-list r)))))
+
 (defun walk-check (form tools)
-  "Depth-first; return the first deny-reason found, or NIL."
+  "Depth-first; return the first deny-reason found, or NIL. Understands binding
+   forms (lambda/let) so parameter/variable names aren't treated as calls."
   (when (consp form)
     (let ((op (car form)))
-      (when (symbolp op)
-        (let ((r (classify op tools))) (when r (return-from walk-check r))))
-      (dolist (x form)
-        (let ((r (walk-check x tools))) (when r (return-from walk-check r))))))
+      (cond
+        ((and (symbolp op) (string-equal (symbol-name op) "LAMBDA"))
+         (return-from walk-check (walk-list (cddr form) tools)))     ; skip arglist, walk body
+        ((and (symbolp op) (member (symbol-name op) '("LET" "LET*") :test #'string-equal))
+         (return-from walk-check                                     ; walk inits + body, not var names
+           (or (walk-list (mapcar (lambda (b) (and (consp b) (cadr b))) (cadr form)) tools)
+               (walk-list (cddr form) tools))))
+        ((symbolp op)
+         (return-from walk-check (or (classify op tools) (walk-list (cdr form) tools))))
+        (t (return-from walk-check (walk-list form tools))))))      ; op is itself a form
   nil)
 
 (defun %install-env (env tools)

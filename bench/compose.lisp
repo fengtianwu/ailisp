@@ -15,14 +15,19 @@
 (defparameter *compose-env*
   (list (cons 'add (lambda (a b) (+ a b))) (cons 'sub (lambda (a b) (- a b)))
         (cons 'mul (lambda (a b) (* a b))) (cons 'gt (lambda (a b) (> a b)))
-        (cons 'get_population #'%pop) (cons 'get_user_city #'%city) (cons 'get_price #'%price)))
+        (cons 'get_population #'%pop) (cons 'get_user_city #'%city) (cons 'get_price #'%price)
+        (cons 'get_cities (lambda () (list "Tokyo" "Delhi" "Paris" "New York" "Shanghai")))
+        (cons 'get_items  (lambda () (list "apple" "banana" "cherry")))))
 
 (defparameter *compose-sigs*
   "  add(a, b), sub(a, b), mul(a, b)  -- integer arithmetic
   gt(a, b)  -- true if a > b
   get_population(city)  -- population (millions) of a city
   get_user_city(name)  -- the city where a person lives
-  get_price(item)  -- unit price of an item")
+  get_price(item)  -- unit price of an item
+  get_cities()  -- list of all cities
+  get_items()  -- list of all items
+  (for plan-execute you may also use: count-if, mapcar, reduce, remove-if-not, length, lambda, +, >, etc.)")
 
 (defparameter *compose-tasks*
   '((:name "arith"       :goal "Compute (3 + 4) times (10 - 2)."                                   :expected 56)
@@ -32,7 +37,14 @@
     (:name "compare"     :goal "Is Tokyo's population greater than Paris's?"                        :expected t)
     (:name "double-dep"  :goal "What is the population of the city where Alice lives, doubled?"     :expected 22)
     (:name "nested"      :goal "Subtract the price of a banana from a cherry, then multiply by 4."  :expected 16)
-    (:name "deep"        :goal "Add the populations of Tokyo and Delhi, then subtract Paris's."     :expected 58)))
+    (:name "deep"        :goal "Add the populations of Tokyo and Delhi, then subtract Paris's."     :expected 58)
+    ;; ---- control-flow: iterate / filter / aggregate over a collection ----
+    (:name "cf-count"    :goal "How many cities have a population over 30 million?"                 :expected 2)
+    (:name "cf-sum"      :goal "What is the combined population of all the cities?"                 :expected 128)
+    (:name "cf-max"      :goal "What is the largest population among all the cities?"               :expected 37)
+    (:name "cf-count2"   :goal "How many cities have a population over 25 million? Multiply that count by 10." :expected 30)
+    (:name "cf-filtsum"  :goal "What is the total price of all items that cost more than 1?"        :expected 7)
+    (:name "cf-count3"   :goal "How many items cost 2 or more?"                                     :expected 2)))
 
 (defun compose= (a b)
   (cond ((and (numberp a) (numberp b)) (= a b))
@@ -58,7 +70,7 @@
                                    (getf task :goal) (car feedback) (cdr feedback))
                            (getf task :goal)))
                (*last-usage* nil)
-               (raw (call-model model prompt :system sys :params '(:temp 0 :max-tokens 2048)))
+               (raw (call-model model prompt :system sys :params '(:temp 0 :max-tokens 4096)))
                (form (ignore-errors (read-sexpr-safe raw))))
           (incf calls) (incf tok (or *last-usage* 0)) (setf last-raw raw)
           (if (null form)
@@ -74,7 +86,8 @@
 ;;; ---- approach 2: real JSON function-calling (tools API, sequential round-trips) ----
 (defparameter *compose-param-order*
   '(("add" "a" "b") ("sub" "a" "b") ("mul" "a" "b") ("gt" "a" "b")
-    ("get_population" "city") ("get_user_city" "name") ("get_price" "item")))
+    ("get_population" "city") ("get_user_city" "name") ("get_price" "item")
+    ("get_cities") ("get_items")))
 
 (defun %fn-schema (name params doc)
   (list (cons "type" "function")
@@ -83,8 +96,10 @@
                     (cons "parameters"
                           (list (cons "type" "object")
                                 (cons "properties"
-                                      (mapcar (lambda (p) (cons p (list (cons "type" "string")))) params))
-                                (cons "required" params)))))))
+                                      (if params
+                                          (mapcar (lambda (p) (cons p (list (cons "type" "string")))) params)
+                                          :emptyobj))
+                                (cons "required" (or params :emptyarr))))))))
 
 (defparameter *compose-tools-schema*
   (list (%fn-schema "add" '("a" "b") "add two integers")
@@ -93,7 +108,9 @@
         (%fn-schema "gt" '("a" "b") "true if a > b")
         (%fn-schema "get_population" '("city") "population (millions) of a city")
         (%fn-schema "get_user_city" '("name") "the city where a person lives")
-        (%fn-schema "get_price" '("item") "unit price of an item")))
+        (%fn-schema "get_price" '("item") "unit price of an item")
+        (%fn-schema "get_cities" '() "list of all cities")
+        (%fn-schema "get_items" '() "list of all items")))
 
 (defun %num (x)
   "Coerce a numeric STRING to a number; leave non-numeric strings (names) alone."

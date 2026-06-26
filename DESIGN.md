@@ -333,7 +333,15 @@ NL 条件编译下沉,以及——**真的做出来并 benchmark**(Pel 自承无
   - **结论(配合 BFCL 单次持平):ailisp 价值在多步组合效率(结构性:1 次 vs N 次往返),非单次调用成本。**
   - 安全修复:`safe-eval` 兜住 LLM 生成代码的任意运行时错误(`:abort :eval-error` + 错误消息供重试),不崩主机。
   - 基础设施:`%chat-raw`(messages 数组 + tools + tool_calls 解析)= 真 function-calling 支持。
-  - [ ] (可选)更大模型 / 更复杂任务(循环、map、过滤、条件)看优势是否放大 / 多 provider
+  - [x] **控制流任务(+6:count/sum/max/filter over 集合)** —— 需要 `count-if/mapcar/reduce/lambda`
+    (safe-eval walker 升级支持绑定形式;`get_cities/get_items` 列表工具;`foo()`→`foo` 归一)
+    - gemma-12b(推理模型):**plan-execute 11/14、~71k token(~10×);JSON 12/14、6.5k token**
+    - **反转!** 控制流上 plan-execute 不再省:模型一次性合成难程序时**推理 token 爆炸**(cf-count2/filtsum/count3
+      把 max_tokens 全烧完仍吐不出程序),而 JSON 顺序调用把推理摊成每轮一小步、便宜稳定。
+    - 诊断:失败**不是不会写 Lisp**(模型写出的 `(reduce (lambda...) (mapcar (lambda...) (get_cities)))` 逻辑正确),
+      而是 ① Python 空参 `foo()`(已修)② 推理模型一次性合成的推理开销失控。
+  - **总结论:代码合成的优劣高度依赖模型——简单组合(推理模型也)赢;控制流需要"写控制流不费大量推理"的模型(代码模型)。**
+  - [ ] **决定性实验:换 qwen-coder-next(代码模型,写 Lisp 强、推理少)跑控制流**;更复杂任务;多 provider
 - [ ] (实验) L3 符号 fallback、L4 NL reader、AST 自动并行、向量检索
 
 ---
