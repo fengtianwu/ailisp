@@ -9,12 +9,11 @@
    ;; safe-eval
    #:safe-eval #:charge #:budget-exceeded #:*budget-remaining*
    ;; model layer
-   #:*model* #:call-model
+   #:*model* #:chat #:call-model #:%msg
    #:make-mock-model #:mock-model #:mock-model-calls
-   #:make-ollama-model #:ollama-model
    #:make-openai-model #:openai-model
    ;; ai
-   #:ai #:ai-error #:ai-error-reason #:read-sexpr-safe #:resolve-params
+   #:ai #:llm #:assemble-messages #:ai-error #:ai-error-reason #:read-sexpr-safe #:resolve-params
    ;; pipe
    #:~>
    ;; skills

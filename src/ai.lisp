@@ -101,21 +101,56 @@
       (list :temp (cond (into 0) (tools 0) ((creative-prompt-p prompt) 0.7) (t 0.2)))
       params))
 
+;;; ---- assembly + the two layers (llm raw text / ai typed value) ----
+(defun %render-context (c) (if (stringp c) c (princ-to-string c)))
+
+(defun assemble-messages (prompt &key system context history skills)
+  "Build the messages array from convenience inputs: SYSTEM (+ SKILLS playbooks) ->
+   a system message; HISTORY -> prior (role . content) turns; CONTEXT -> grounding
+   data prepended to the user message; PROMPT -> the user message."
+  (let ((sys (apply-skills system skills))
+        (user (if context
+                  (format nil "参考资料:~%~A~%~%~A" (%render-context context) prompt)
+                  prompt)))
+    (append (when sys (list (%msg "system" sys)))
+            (loop for h in history collect (%msg (string-downcase (string (car h))) (cdr h)))
+            (list (%msg "user" user)))))
+
+(defun llm (prompt &key model system (params :auto) context history skills)
+  "Raw layer: assemble messages, resolve params, return the model's TEXT.
+   No schema / validation / retry -- that is AI. Model defaults to *model*."
+  (let ((m (or model *model*)))
+    (unless m (error 'ai-error :reason :no-model))
+    (chat m (assemble-messages prompt :system system :context context
+                               :history history :skills skills)
+          :params (resolve-params params :prompt prompt))))
+
 (defun ai (prompt &key model system into (params :auto) (max-retries 1)
-                       (format :json) read-package skills tools)
-  (let ((m (or model *model*))
-        (rp (resolve-params params :into into :tools tools :prompt prompt))
-        (sys (let ((base (apply-skills system skills)))
-               (if (and into (eq format :json))
-                   (format nil "~@[~A~%~%~]Respond with ONLY JSON matching this schema (use EXACTLY these keys):~%~A"
-                           base (render-schema into))
-                   base))))
+                       (format :json) read-package context history skills)
+  "Typed layer over CHAT: schema-constrained output (:into rendered into the system
+   prompt), parsed + validated, retried WITH error feedback. Returns a validated value.
+   Tool use is agentic -> see REACT / plan-execute, not here."
+  (let* ((m (or model *model*))
+         (rp (resolve-params params :into into :prompt prompt))
+         (sysprompt (if (and into (eq format :json))
+                        (format nil "~@[~A~%~%~]Respond with ONLY JSON matching this schema (use EXACTLY these keys):~%~A"
+                                (apply-skills system skills) (render-schema into))
+                        (apply-skills system skills)))
+         (feedback nil))
     (unless m (error 'ai-error :reason :no-model))
     (dotimes (i (max 1 max-retries))
-      (let ((raw (call-model m prompt :system sys :params rp :into into)))
+      (let* ((msgs (assemble-messages prompt :system sysprompt :context context :history history))
+             (msgs (if feedback (append msgs (list (%msg "user" feedback))) msgs))
+             (raw (chat m msgs :params rp)))
         (multiple-value-bind (val okp) (parse-output raw into format read-package)
-          (when okp
-            (if into
-                (when (validate into val) (return-from ai (values val)))
-                (return-from ai (values val)))))))
+          (cond
+            ((not okp)
+             (setf feedback "Your previous output could not be parsed. Re-output ONLY the required format, nothing else."))
+            ((null into) (return-from ai (values val)))
+            (t (multiple-value-bind (pass reason field) (validate into val)
+                 (if pass
+                     (return-from ai (values val))
+                     (setf feedback
+                           (format nil "Your previous output failed validation: ~A~@[ (field ~A)~]. Fix it and re-output ONLY the JSON."
+                                   reason field)))))))))
     (error 'ai-error :reason :schema-violation)))

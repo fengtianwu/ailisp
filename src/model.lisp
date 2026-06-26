@@ -1,24 +1,38 @@
 ;;;; ailisp model layer -- model-agnostic provider abstraction.
-;;;; A model is a value; CALL-MODEL is the protocol. Two adapters:
-;;;;   - mock-model   : scripted responses (for deterministic tests; no network)
-;;;;   - ollama-model : local model via curl HTTP (untested until ollama is installed)
-;;;; CALL-MODEL returns raw model output: a string (to be parsed) OR an already
-;;;; structured value (mock convenience). PARSE-OUTPUT (in ai.lisp) normalizes it.
+;;;; A model is a value; CHAT is the raw boundary: (chat model messages &key params)
+;;;; -> (values content tokens). Adapters (defmethod CHAT):
+;;;;   - mock-model   : scripted responses (deterministic tests; no network)
+;;;;   - openai-model : OpenAI-compatible HTTP (hiai-core's local server on :8080)
+;;;; CALL-MODEL is a thin prompt+system shim over CHAT (for bench code). Message
+;;;; assembly (prompt/system/context/history/skills -> messages) lives in ai.lisp.
 (in-package :ailisp)
 
 (defvar *model* nil "Default model used by AI when :model is omitted.")
 (defvar *last-usage* nil "Total tokens reported by the most recent model call, or NIL.")
 
-(defgeneric call-model (model prompt &key system params into))
+;;; The raw boundary: MODEL + MESSAGES (role/content alists) + sampling PARAMS ->
+;;; (values content-string completion-tokens). Polymorphic (mock / openai). Message
+;;; assembly (prompt+system+context+history+skills -> messages) lives one layer up
+;;; in ai.lisp's ASSEMBLE-MESSAGES; the raw layer never sees :system as a special arg.
+(defgeneric chat (model messages &key params))
 
-;;; ---- mock ----
+(defun %msg (role content) (list (cons "role" role) (cons "content" content)))
+
+;;; ---- mock (scripted; deterministic tests, no network) ----
 (defstruct mock-model (responses nil) (idx 0) (calls 0))
 
-(defmethod call-model ((m mock-model) prompt &key system params into)
-  (declare (ignore prompt system params into))
+(defmethod chat ((m mock-model) messages &key params)
+  (declare (ignore messages params))
   (incf (mock-model-calls m))
   (prog1 (nth (mock-model-idx m) (mock-model-responses m))
     (incf (mock-model-idx m))))
+
+;;; ---- call-model: thin back-compat shim (prompt+system -> 2 messages -> chat) ----
+;;; Kept so bench code (compose/bfcl/harness) keeps working; returns content only.
+(defun call-model (model prompt &key system params into)
+  (declare (ignore into))
+  (chat model (append (when system (list (%msg "system" system))) (list (%msg "user" prompt)))
+        :params params))
 
 ;;; ---- OpenAI-compatible chat (hiai-core's local MLX/llama server on :8080) ----
 ;;; Talks to {url}/chat/completions. This is the recommended live adapter: hiai-core
@@ -62,48 +76,19 @@
           unless (eq v *param-unset*) do (push (cons name v) acc))
     acc))
 
-(defmethod call-model ((m openai-model) prompt &key system params into)
-  (declare (ignore into))
-  (let* ((msgs (append (when system
-                         (list (list (cons "role" "system") (cons "content" system))))
-                       (list (list (cons "role" "user") (cons "content" prompt)))))
-         (req (json-encode
-               (list* (cons "model" (%openai-resolve-id m))
-                      (cons "messages" msgs)
-                      (cons "stream" :false)
-                      (%openai-params params m))))
+(defmethod chat ((m openai-model) messages &key params)
+  (let* ((req (json-encode (list* (cons "model" (%openai-resolve-id m))
+                                  (cons "messages" messages)
+                                  (cons "stream" :false)
+                                  (%openai-params params m))))
          (resp (%curl-json (concatenate 'string (openai-model-url m) "/chat/completions") req))
          (parsed (ignore-errors (json-decode resp))))
-    ;; Tolerate empty / error / malformed responses (model loading, 5xx, etc.):
-    ;; return NIL so callers see a parse failure instead of crashing the run.
-    ;; completion (output) tokens, not total: measures OUTPUT verbosity of the
-    ;; format independent of prompt length (the right cost metric for s-expr vs JSON).
+    ;; Tolerate empty/error responses (model loading, 5xx): return NIL content so
+    ;; callers see a parse failure instead of crashing. Report completion (output)
+    ;; tokens (not total) -- the prompt-length-independent cost metric.
     (setf *last-usage* (and parsed (or (%dig parsed "usage" "completion_tokens")
                                        (%dig parsed "usage" "total_tokens"))))
-    (and parsed (%dig parsed "choices" 0 "message" "content"))))
-
-(defun %chat-raw (model messages &key tools (max-tokens 1024))
-  "Lower-level chat call with a full MESSAGES array (+ optional OpenAI function
-   TOOLS schema). Returns (values content tool-name arg-json-string tool-call-id tokens)."
-  (let* ((req (json-encode (append (list (cons "model" (%openai-resolve-id model))
-                                         (cons "messages" messages)
-                                         (cons "temperature" 0)
-                                         (cons "max_tokens" max-tokens)
-                                         (cons "stream" :false))
-                                   (when tools (list (cons "tools" tools))))))
-         (resp (%curl-json (concatenate 'string (openai-model-url model) "/chat/completions") req))
-         (p (ignore-errors (json-decode resp)))
-         (msg (and p (%dig p "choices" 0 "message")))
-         (tc (and msg (%dig msg "tool_calls" 0))))
-    (values (and msg (%mget msg "content"))
-            (and tc (%dig tc "function" "name"))
-            (and tc (%dig tc "function" "arguments"))
-            (and tc (%mget tc "id"))
-            (and p (or (%dig p "usage" "completion_tokens") (%dig p "usage" "total_tokens"))))))
-
-;;; ---- ollama (local) ----
-;;; NOTE: M0 ships this but it is UNVERIFIED (ollama not installed in dev env).
-(defstruct ollama-model (url "http://localhost:11434") (id "qwen2.5"))
+    (values (and parsed (%dig parsed "choices" 0 "message" "content")) *last-usage*)))
 
 (defun %curl-json (url body)
   "POST BODY (a json string) to URL via curl; return response body string."
@@ -127,24 +112,6 @@
                     (loop for (k v) on params by #'cddr
                           append (list "--data-urlencode" (format nil "~A=~A" k v))))
      :search t :output out :error nil)))
-
-(defmethod call-model ((m ollama-model) prompt &key system params into)
-  (declare (ignore params))
-  (let* ((msgs (append (when system
-                         (list (list (cons "role" "system") (cons "content" system))))
-                       (list (list (cons "role" "user") (cons "content" prompt)))))
-         (req (json-encode
-               (list (cons "model" (ollama-model-id m))
-                     (cons "messages" msgs)
-                     (cons "stream" :false)
-                     ;; ask for JSON when a schema is expected
-                     (cons "format" (if into "json" :null)))))
-         (resp (%curl-json (concatenate 'string (ollama-model-url m) "/api/chat") req))
-         (parsed (ignore-errors (json-decode resp)))
-         (content (and parsed (%mget (%mget parsed "message") "content"))))
-    (if (and into content)
-        (ignore-errors (json-decode content))   ; structured -> lisp (%map/list/...)
-        content)))
 
 (defun %mget (map key)
   "Get KEY (string) from a (%map ...) form produced by json-decode."
