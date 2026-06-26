@@ -101,6 +101,29 @@
       (list :temp (cond (into 0) (tools 0) ((creative-prompt-p prompt) 0.7) (t 0.2)))
       params))
 
+;;; ---- settings: a global default profile, per-call overrides merge over it ----
+(defvar *settings* nil
+  "Default ai/llm settings (plist): :model :system :params :into :max-retries :format
+   :read-package :context :history :skills. Per-call keywords override; :params deep-merges.")
+
+(defun %merge-plist (base over)
+  (let ((r (copy-list base)))
+    (loop for (k v) on over by #'cddr do (setf (getf r k) v)) r))
+
+(defun %merge-params (base over)
+  "Deep-merge sampling params: keys in OVER win; :auto / non-plist / :unset replaces/keeps."
+  (cond ((eq over :unset) base)
+        ((or (eq over :auto) (eq base :auto) (not (listp base)) (not (listp over))) over)
+        (t (%merge-plist base over))))
+
+(defun %setting (settings key explicit default)
+  "Per-call EXPLICIT (unless :unset) wins, else SETTINGS, else DEFAULT."
+  (if (eq explicit :unset) (getf settings key default) explicit))
+
+(defmacro with-settings ((&rest overrides) &body body)
+  "Run BODY with *settings* = current *settings* overlaid with OVERRIDES (a plist)."
+  `(let ((*settings* (%merge-plist *settings* (list ,@overrides)))) ,@body))
+
 ;;; ---- assembly + the two layers (llm raw text / ai typed value) ----
 (defun %render-context (c) (if (stringp c) c (princ-to-string c)))
 
@@ -116,38 +139,53 @@
             (loop for h in history collect (%msg (string-downcase (string (car h))) (cdr h)))
             (list (%msg "user" user)))))
 
-(defun llm (prompt &key model system (params :auto) context history skills)
+(defun llm (prompt &key (model :unset) (system :unset) (params :unset)
+                        (context :unset) (history :unset) (skills :unset) (settings *settings*))
   "Raw layer: assemble messages, resolve params, return the model's TEXT.
-   No schema / validation / retry -- that is AI. Model defaults to *model*."
-  (let ((m (or model *model*)))
+   No schema / validation / retry -- that is AI. Inputs default from *settings* then *model*."
+  (let ((m (or (%setting settings :model model nil) *model*)))
     (unless m (error 'ai-error :reason :no-model))
-    (chat m (assemble-messages prompt :system system :context context
-                               :history history :skills skills)
-          :params (resolve-params params :prompt prompt))))
+    (chat m (assemble-messages prompt
+                               :system  (%setting settings :system system nil)
+                               :context (%setting settings :context context nil)
+                               :history (%setting settings :history history nil)
+                               :skills  (%setting settings :skills skills nil))
+          :params (resolve-params (%merge-params (getf settings :params :auto) params) :prompt prompt))))
 
-(defun ai (prompt &key model system into (params :auto) (max-retries 1)
-                       (format :json) read-package context history skills)
+(defun ai (prompt &key (model :unset) (system :unset) (into :unset) (params :unset)
+                       (max-retries :unset) (format :unset) (read-package :unset)
+                       (context :unset) (history :unset) (skills :unset) (settings *settings*))
   "Typed layer over CHAT: schema-constrained output (:into rendered into the system
    prompt), parsed + validated, retried WITH error feedback. Returns a validated value.
-   Tool use is agentic -> see REACT / plan-execute, not here."
-  (let* ((m (or model *model*))
-         (rp (resolve-params params :into into :prompt prompt))
-         (sysprompt (if (and into (eq format :json))
+   All inputs default from *settings* (or :settings); :params deep-merges. Tool use is
+   agentic -> see REACT / plan-execute, not here."
+  (let* ((m       (or (%setting settings :model model nil) *model*))
+         (into*   (%setting settings :into into nil))
+         (rp      (resolve-params (%merge-params (getf settings :params :auto) params)
+                                  :into into* :prompt prompt))
+         (retries (%setting settings :max-retries max-retries 1))
+         (fmt     (%setting settings :format format :json))
+         (rpk     (%setting settings :read-package read-package nil))
+         (ctx     (%setting settings :context context nil))
+         (hist    (%setting settings :history history nil))
+         (sysbase (apply-skills (%setting settings :system system nil)
+                                (%setting settings :skills skills nil)))
+         (sysprompt (if (and into* (eq fmt :json))
                         (format nil "~@[~A~%~%~]Respond with ONLY JSON matching this schema (use EXACTLY these keys):~%~A"
-                                (apply-skills system skills) (render-schema into))
-                        (apply-skills system skills)))
+                                sysbase (render-schema into*))
+                        sysbase))
          (feedback nil))
     (unless m (error 'ai-error :reason :no-model))
-    (dotimes (i (max 1 max-retries))
-      (let* ((msgs (assemble-messages prompt :system sysprompt :context context :history history))
+    (dotimes (i (max 1 retries))
+      (let* ((msgs (assemble-messages prompt :system sysprompt :context ctx :history hist))
              (msgs (if feedback (append msgs (list (%msg "user" feedback))) msgs))
              (raw (chat m msgs :params rp)))
-        (multiple-value-bind (val okp) (parse-output raw into format read-package)
+        (multiple-value-bind (val okp) (parse-output raw into* fmt rpk)
           (cond
             ((not okp)
              (setf feedback "Your previous output could not be parsed. Re-output ONLY the required format, nothing else."))
-            ((null into) (return-from ai (values val)))
-            (t (multiple-value-bind (pass reason field) (validate into val)
+            ((null into*) (return-from ai (values val)))
+            (t (multiple-value-bind (pass reason field) (validate into* val)
                  (if pass
                      (return-from ai (values val))
                      (setf feedback

@@ -14,6 +14,7 @@
    #:make-openai-model #:openai-model
    ;; ai
    #:ai #:llm #:assemble-messages #:ai-error #:ai-error-reason #:read-sexpr-safe #:resolve-params
+   #:*settings* #:with-settings #:%merge-params #:%merge-plist
    ;; pipe
    #:~>
    ;; skills
