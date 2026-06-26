@@ -45,17 +45,33 @@
     (setf map (cond ((integerp k) (nth k map))
                     (t (%mget map k))))))
 
+(defvar *param-unset* '#:unset)
+(defparameter *param-map*
+  '((:top-p "top_p") (:top-k "top_k") (:min-p "min_p") (:seed "seed") (:stop "stop")
+    (:presence-penalty "presence_penalty") (:frequency-penalty "frequency_penalty")
+    (:repeat-penalty "repeat_penalty"))
+  "Optional sampling params forwarded from :params to the OpenAI request when present.")
+
+(defun %openai-params (params m)
+  "Build the request param alist: model/temp/max_tokens always, plus any optional
+   sampling params (top_p/top_k/min_p/seed/stop/penalties) present in PARAMS."
+  (let ((acc (list (cons "max_tokens" (or (getf params :max-tokens) (openai-model-max-tokens m)))
+                   (cons "temperature" (or (getf params :temp) 0)))))
+    (loop for (key name) in *param-map*
+          for v = (getf params key *param-unset*)
+          unless (eq v *param-unset*) do (push (cons name v) acc))
+    acc))
+
 (defmethod call-model ((m openai-model) prompt &key system params into)
   (declare (ignore into))
   (let* ((msgs (append (when system
                          (list (list (cons "role" "system") (cons "content" system))))
                        (list (list (cons "role" "user") (cons "content" prompt)))))
          (req (json-encode
-               (list (cons "model" (%openai-resolve-id m))
-                     (cons "messages" msgs)
-                     (cons "max_tokens" (or (getf params :max-tokens) (openai-model-max-tokens m)))
-                     (cons "temperature" (or (getf params :temp) 0))
-                     (cons "stream" :false))))
+               (list* (cons "model" (%openai-resolve-id m))
+                      (cons "messages" msgs)
+                      (cons "stream" :false)
+                      (%openai-params params m))))
          (resp (%curl-json (concatenate 'string (openai-model-url m) "/chat/completions") req))
          (parsed (ignore-errors (json-decode resp))))
     ;; Tolerate empty / error / malformed responses (model loading, 5xx, etc.):

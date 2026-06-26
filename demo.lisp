@@ -18,7 +18,7 @@
 
 ;;; 1) Structured extraction (schema-constrained + validated)  -- change the text/schema
 (demo "1. 结构化抽取"
-  (let ((r (ai "从这句话抽取信息:李雷今年28岁,是一名机械工程师,住在上海。"
+  (let ((r (ai "从这句话抽取信息:李雷今年28岁,是一名机械工程师, 住在上海, 是安徽人。"
                :into '(%map :name string :age int :job string :city string))))
     (format t "=> ~S~%" r)))
 
@@ -50,11 +50,11 @@
   (let ((tools (list (make-tool :name 'get_weather
                                 :fn (lambda (c) (if (search "北京" c) "晴 26C" "多云 22C"))
                                 :doc "查某城市今天天气,参数是城市名"))))
-    (multiple-value-bind (ans calls transcript) (react "北京今天适合穿短袖吗?" tools :max-steps 4)
+    (multiple-value-bind (ans calls transcript) (react "北京今天适合穿毛衣吗?" tools :max-steps 4)
       (format t "=> ~A   (~A 次工具调用)~%transcript:~%~A~%" ans calls transcript))))
 
 ;;; 5) ~> pipe (pure, no model)  -- structural sugar
 (demo "5. 管道 ~>"
-  (format t "(~~> 3 (+ _ 4) (* _ 2)) => ~S~%" (~> 3 (+ _ 4) (* _ 2))))
+  (format t "(~~> 3 (+ _ 4) (* _ 2)) => ~S~%" (~> 3 (+ _ 8) (* _ 1332))))
 
 (format t "~&~%(改 demo.lisp 里的提示词/问题再跑 `make demo`;或 `make repl` 进交互。)~%")
