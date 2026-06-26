@@ -19,3 +19,8 @@ tests/fixtures/*.json
 
 # Berkeley FCL dataset (download separately; see DESIGN.md / `make bfcl`)
 bfcl-data/
+
+# editor swap files
+*.swp
+.*.swp
+*.swo
