@@ -18,7 +18,7 @@
    ;; skills
    #:*hiai-url* #:fetch-skill #:apply-skills
    ;; agent
-   #:tool #:make-tool #:tool-name #:tool-fn #:tool-doc #:react
+   #:tool #:make-tool #:tool-name #:tool-fn #:tool-doc #:react #:build-agent
    ;; rag (pillar 2 via hiai-core KB)
    #:kb-search #:kb-context #:rag #:kb-parse-hits #:kb-tool
    ;; bench (M7)

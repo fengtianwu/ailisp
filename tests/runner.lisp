@@ -10,7 +10,8 @@
     "tests/unit/eval.cases.lisp"
     "tests/unit/params.cases.lisp"
     "tests/unit/grade.cases.lisp"
-    "tests/unit/bfcl.cases.lisp"))
+    "tests/unit/bfcl.cases.lisp"
+    "tests/unit/build.cases.lisp"))
 
 (defun read-cases-file (path)
   "Return the list of (deftestset NAME case...) forms in PATH, read as data."
@@ -127,6 +128,15 @@
         (values t nil)
         (values nil (format nil "~S => ~S != ~S" (getf c :form) v (getf c :value))))))
 
+(defun run-build-case (c)
+  (let* ((tools (loop for (sym . form) in (getf c :tools)
+                      collect (ailisp:make-tool :name sym :fn (eval form) :doc "")))
+         (m (ailisp:make-mock-model :responses (getf c :script)))
+         (result (ailisp:build-agent (getf c :goal) tools :model m :max-steps 8)))
+    (if (equal result (getf c :expect))
+        (values t nil)
+        (values nil (format nil "result ~S != ~S" result (getf c :expect))))))
+
 (defun run-params-case (c)
   (let ((p (ailisp:resolve-params :auto :into (getf c :into)
                                         :tools (getf c :tools)
@@ -166,6 +176,7 @@
         ((string-equal testset-name "KB-PARSE")        (run-kb-parse-case c))
         ((string-equal testset-name "EVAL")            (run-eval-case c))
         ((string-equal testset-name "PARAMS")          (run-params-case c))
+        ((string-equal testset-name "BUILD")           (run-build-case c))
         (t (values nil (format nil "unknown testset ~A" testset-name)))))
 
 (defun run-all ()

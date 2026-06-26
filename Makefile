@@ -38,3 +38,7 @@ demo:
 # Interactive ailisp REPL.
 repl:
 	$(SBCL) --load repl.lisp
+
+# Incremental-construction agent demo (model builds helpers bottom-up).
+build:
+	$(SBCL) --script run-build.lisp

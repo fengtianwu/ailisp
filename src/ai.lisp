@@ -64,6 +64,24 @@
         (handler-case (values (read-from-string (%normalize-py-strings body)))
           (error () nil))))))
 
+(defun %read-all-sexprs (s &optional read-package)
+  "READ every s-expression in S (a model turn may contain several), safely
+   (*read-eval* nil, ailisp readtable, foo()->foo). Stops at the first unreadable
+   form, keeping what parsed."
+  (let ((*read-eval* nil)
+        (*readtable* *ailisp-readtable*)
+        (*package* (cond ((packagep read-package) read-package)
+                         (read-package (find-package read-package))
+                         (t (find-package :ailisp))))
+        (body (%normalize-empty-calls (%strip-fences s)))
+        (forms '()) (i 0))
+    (handler-case
+        (loop (multiple-value-bind (form next) (read-from-string body nil :eof :start i)
+                (when (eq form :eof) (return))
+                (push form forms) (setf i next)))
+      (error () nil))
+    (nreverse forms)))
+
 (defun %kw-keys (x)
   "Convert (%map \"k\" v ..) string keys to keywords, recursively, so JSON-decoded
    model output matches ailisp's keyword-keyed %map convention."
