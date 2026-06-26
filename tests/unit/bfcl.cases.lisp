@@ -59,6 +59,12 @@
    :gt {"calc_distance" {"coord" [[33.4 -112.0]]}}
    :expect t)
 
+  ;; LLM writes Python-style single-quoted strings in a list arg; normalized on retry
+  (:name "sexpr-py-single-quote-strings" :format sexpr
+   :output "(generate_seq :length 100 :prefs ('G' 'C'))"
+   :gt {"generate_seq" {"length" [100] "prefs" [["G" "C"]]}}
+   :expect t)
+
   ;; malformed output
   (:name "json-malformed" :format json
    :output "sure, here you go"

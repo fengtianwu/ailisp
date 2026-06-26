@@ -62,13 +62,21 @@
                   collect (format nil "    - ~A (~A)~A" pname (%mget spec "type")
                                   (if (member pname req :test #'equal) " [required]" " [optional]"))))))
 
+(defun %fn-param-names (fn)
+  (loop for (pname spec) on (cdr (%mget (%mget fn "parameters") "properties")) by #'cddr
+        collect pname))
+
 (defun bfcl-prompt (fn fmt)
-  (let ((name (%mget fn "name")) (desc (%mget fn "description")) (lines (%fn-param-lines fn)))
+  "Build the call prompt. The example template uses the REAL parameter names (not a
+   literal `param`) so an unfamiliar format isn't penalized by the model copying the
+   placeholder; both formats get the same concrete treatment for fairness."
+  (let* ((name (%mget fn "name")) (desc (%mget fn "description"))
+         (lines (%fn-param-lines fn)) (pnames (%fn-param-names fn)))
     (if (eq fmt :sexpr)
-        (format nil "Call this function to satisfy the user request.~%  ~A: ~A~%  parameters:~%~A~%Reply with ONLY an s-expression using KEYWORD args: (~A :param value ...). No prose."
-                name desc lines name)
-        (format nil "Call this function to satisfy the user request.~%  ~A: ~A~%  parameters:~%~A~%Reply with ONLY JSON: {\"name\": \"~A\", \"arguments\": {\"param\": value, ...}}. No prose."
-                name desc lines name))))
+        (format nil "Call this function to satisfy the user request.~%  ~A: ~A~%  parameters:~%~A~%Reply with ONLY an s-expression of this exact shape (fill in the values):~%  (~A~{ :~A <value>~})~%No prose."
+                name desc lines name pnames)
+        (format nil "Call this function to satisfy the user request.~%  ~A: ~A~%  parameters:~%~A~%Reply with ONLY JSON of this exact shape (fill in the values):~%  {\"name\": \"~A\", \"arguments\": {~{~A~^, ~}}}~%No prose."
+                name desc lines name (mapcar (lambda (p) (format nil "\"~A\": <value>" p)) pnames)))))
 
 (defun run-bfcl-task (q gt fmt model)
   (let* ((fn (first (%mget q "function")))

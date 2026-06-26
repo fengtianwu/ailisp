@@ -21,16 +21,35 @@
         (t (let ((v (ignore-errors (%kw-keys (json-decode (%strip-fences raw))))))
              (if v (values v t) (values nil nil))))))
 
+(defun %normalize-py-strings (s)
+  "Recovery: turn paired single-quoted tokens 'X' into \"X\" (Python-style string
+   args LLMs emit, e.g. ('G' 'C')). Lisp quote 'sym / '(..) has no closing ' so it
+   is left untouched. Applied ONLY as a fallback when the normal read fails."
+  (with-output-to-string (out)
+    (let ((i 0) (n (length s)))
+      (loop while (< i n)
+            for c = (char s i)
+            do (let ((j (and (char= c #\') (position #\' s :start (1+ i)))))
+                 (if j
+                     (progn (write-char #\" out) (write-string (subseq s (1+ i) j) out)
+                            (write-char #\" out) (setf i (1+ j)))
+                     (progn (write-char c out) (incf i))))))))
+
 (defun read-sexpr-safe (s &optional read-package)
   "READ S as one s-expression with read-time eval DISABLED (no #. injection),
    using the ailisp readtable so [] / {} parse. Symbols intern in READ-PACKAGE
-   so they match the tool symbols passed to safe-eval."
+   so they match the tool symbols passed to safe-eval. On read failure, retry once
+   with Python-style single-quote strings normalized."
   (let ((*read-eval* nil)
         (*readtable* *ailisp-readtable*)
         (*package* (cond ((packagep read-package) read-package)
                          (read-package (find-package read-package))
-                         (t (find-package :ailisp)))))
-    (values (read-from-string (%strip-fences s)))))
+                         (t (find-package :ailisp))))
+        (body (%strip-fences s)))
+    (handler-case (values (read-from-string body))
+      (error ()
+        (handler-case (values (read-from-string (%normalize-py-strings body)))
+          (error () nil))))))
 
 (defun %kw-keys (x)
   "Convert (%map \"k\" v ..) string keys to keywords, recursively, so JSON-decoded

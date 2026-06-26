@@ -60,7 +60,10 @@
          (parsed (ignore-errors (json-decode resp))))
     ;; Tolerate empty / error / malformed responses (model loading, 5xx, etc.):
     ;; return NIL so callers see a parse failure instead of crashing the run.
-    (setf *last-usage* (and parsed (%dig parsed "usage" "total_tokens")))
+    ;; completion (output) tokens, not total: measures OUTPUT verbosity of the
+    ;; format independent of prompt length (the right cost metric for s-expr vs JSON).
+    (setf *last-usage* (and parsed (or (%dig parsed "usage" "completion_tokens")
+                                       (%dig parsed "usage" "total_tokens"))))
     (and parsed (%dig parsed "choices" 0 "message" "content"))))
 
 ;;; ---- ollama (local) ----

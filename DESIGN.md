@@ -312,7 +312,17 @@ NL 条件编译下沉,以及——**真的做出来并 benchmark**(Pel 自承无
     s-expr 解析 92%→**98%**(391/400)、正确 74%→**78%**(311);JSON 仍 100%/79%。
     **差距 −5pts→−2pts(78% vs 79%,~6 任务);s-expr token −6.3%、延迟 −8%。** 残留 9 个失败为 `'G'` 类 Python-ism。
     **最终结论:有原则的 reader 改动后,s-expr 准确率基本追平 JSON 且更省成本;那 5pts 主要是逗号数组解析,非格式本质劣势。**
-  - [ ] 更多模型 + 全量复跑 12b/31b + record/replay 固定(后续)
+  - [x] **方法论修正 + 最终诚实结论**(经多次全量 + 残留诊断 + 指标修正):
+    - 解析残留诊断(`bfcl-sexpr-diag`):逗号数组/元组(已修:逗号=空白)、单引号字符串 `'G'`(已修:失败兜底
+      把成对 `'..'` 转 `".."`)、**提示词 `:param` 字面被模型照抄**(已修:两格式都用真实参数名模板,公平)、
+      少量 JSON-object dict 参数 `{"k":"v"}`(真实残留)。
+    - **关键指标修正:token 从 `total` 改为 `completion`(只测输出)**——之前"s-expr 更省"是提示长度 confound 的假象。
+    - **gemma-12b 全 400(completion tokens):s-expr 解析 97% 正确 73% 输出 192tok;JSON 98% 74% 171tok。**
+    - **最终结论:s-expr ≈ JSON —— 准确率近乎相同(差 1–2pts,跨 3 模型稳健);输出 token 相当(JSON 甚至略少,
+      因 BPE 分词器对 JSON 高度优化,字符少≠token 少);延迟运行噪声太大(同配置 2× 跳动)无法判定。**
+    - **"s-expr 更省成本"经正确测量不成立。** ⇒ ailisp 的价值须落在 homoiconicity / `eval` / 宏 / agent=REPL,
+      而非简单工具调用的 token 成本。诚实记录,停止调参(避免 p-hacking)。
+  - [ ] (可选)多 provider / 多任务类目(parallel/multiple)/ record-replay 固定
 - [ ] (实验) L3 符号 fallback、L4 NL reader、AST 自动并行、向量检索
 
 ---
