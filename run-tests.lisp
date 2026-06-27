@@ -3,7 +3,7 @@
 
 (let ((root (or *load-pathname* *default-pathname-defaults*)))
   (dolist (f '("src/package" "src/reader" "src/schema"
-               "src/model" "src/skills" "src/ai" "src/safe-eval" "src/agent" "src/rag" "src/build" "src/patterns"
+               "src/model" "src/skills" "src/ai" "src/safe-eval" "src/agent" "src/rag" "src/build" "src/patterns" "src/wolfram"
                "bench/grade" "bench/harness" "bench/bfcl"
                "tests/runner"))
     (handler-bind ((warning #'muffle-warning))

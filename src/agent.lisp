@@ -36,21 +36,25 @@ Respond with EXACTLY ONE s-expression and nothing else:~%~
                           :model model
                           :system (or system
                                       "You are a ReAct agent. Output ONLY one s-expression, no prose, no markdown.")
-                          :into '(either (call form) (done string))
+                          :into 'form          ; accept any s-expr; we dispatch below
                           :format :sexpr :read-package pkg
                           :params '(:temp 0) :max-retries 2)
                     (ai-error () nil))))
         (when verbose (format t "~&[step ~A] ~S~%" i step))
-        (cond
-          ((null step)
-           (setf transcript (format nil "~A~&[step ~A] (unparseable model output)" transcript i)))
-          ((sym= (car step) "DONE")
-           (return-from react (values (second step) calls transcript)))
-          ((sym= (car step) "CALL")
-           (incf calls)
-           ;; accept both (call (fn args...)) [nested] and (call fn args...) [flat]
-           (let ((form (if (consp (second step)) (second step) (cdr step))))
-             (multiple-value-bind (status detail) (safe-eval form :tools names :env env)
-               (setf transcript
-                     (format nil "~A~&~S => ~(~A~): ~S" transcript form status detail))))))))
+        (flet ((run (form)
+                 (incf calls)
+                 (multiple-value-bind (status detail) (safe-eval form :tools names :env env)
+                   (setf transcript (format nil "~A~&~S => ~(~A~): ~S" transcript form status detail)))))
+          (cond
+            ((not (consp step))
+             (setf transcript (format nil "~A~&[step ~A] (unparseable model output)" transcript i)))
+            ((sym= (car step) "DONE")
+             (return-from react (values (second step) calls transcript)))
+            ;; (call (fn args)) [nested] or (call fn args) [flat]
+            ((sym= (car step) "CALL")
+             (run (if (consp (second step)) (second step) (cdr step))))
+            ;; bare tool call (fn args...) -- the model often skips the `call` wrapper
+            ((find (car step) names :test (lambda (a b) (and (symbolp a) (string-equal (string a) (string b)))))
+             (run step))
+            (t (setf transcript (format nil "~A~&[step ~A] (not a call/done: ~S)" transcript i step)))))))
     (values :max-steps-exhausted calls transcript)))

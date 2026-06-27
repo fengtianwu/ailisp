@@ -40,4 +40,9 @@
    :value "best")
   (:name "llm-tool-calls-sub-llm"
    :form (funcall (tool-fn (llm-tool 'helper :model (make-mock-model :responses '("sub says hi")))) "hi?")
-   :value "sub says hi"))
+   :value "sub says hi")
+
+  ;; wolfram = a second eval-language target; parse its /wolfram response (pure)
+  (:name "wolfram-success"       :form (%wolfram-result {"ran" #t "exit_code" 0 "text" "  Cos[x]  "}) :value "Cos[x]")
+  (:name "wolfram-needs-approval" :form (%wolfram-result {"ran" #f "needs_approval" #t})              :value [:needs-approval])
+  (:name "wolfram-error"         :form (%wolfram-result {"ran" #t "exit_code" 255 "text" "boom"})     :value [:error "boom"]))

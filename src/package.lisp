@@ -23,6 +23,8 @@
    #:reflect #:vote #:%majority #:llm-tool
    ;; rag (pillar 2 via hiai-core KB)
    #:kb-search #:kb-context #:rag #:kb-parse-hits #:kb-tool
+   ;; wolfram (a second eval-language target via hiai-core)
+   #:wolfram-eval #:wolfram-tool #:%wolfram-result
    ;; bench (M7)
    #:*last-usage* #:*bench-tasks* #:run-bench #:run-task
    #:parse-call-sexpr #:parse-call-json #:grade-call #:arg=
