@@ -142,17 +142,17 @@
   "Run BODY with *settings* = current *settings* overlaid with OVERRIDES (a plist)."
   `(let ((*settings* (%merge-plist *settings* (list ,@overrides)))) ,@body))
 
-;;; ---- the symbolic<->probabilistic boundary: lift ↑ and lower ↓ ----
-(defun lift (x)
-  "↑ encode a symbolic value into prompt text (deterministic -> LLM boundary).
+;;; ---- the symbolic<->probabilistic boundary: s2b (into LLM) / b2s (out of LLM) ----
+(defun s2b (x)
+  "symbolic -> bayesian: encode a symbolic value into prompt text (into the LLM).
    Strings pass through; other values are printed readably."
   (if (stringp x) x (princ-to-string x)))
 
-(defun lower (raw &key into (format :json) read-package)
-  "↓ project model text onto a CONSTRAINED symbolic value (LLM -> deterministic
-   boundary). => (values value ok reason). ok=nil (+reason :unparseable | a validate
+(defun b2s (raw &key into (format :json) read-package)
+  "bayesian -> symbolic: project model text onto a CONSTRAINED symbolic value (out of
+   the LLM). => (values value ok reason). ok=nil (+reason :unparseable | a validate
    reason) if it doesn't parse or fails the :into schema. For CODE: :format :sexpr,
-   then safe-eval the returned form. (Retry = resample: compose llm+lower in a loop.)"
+   then safe-eval the returned form. (Retry = resample: compose llm+b2s in a loop.)"
   (multiple-value-bind (val okp) (parse-output raw into format read-package)
     (cond ((not okp) (values nil nil :unparseable))
           ((null into) (values val t nil))
@@ -167,7 +167,7 @@
    data prepended to the user message; PROMPT -> the user message."
   (let ((sys (apply-skills system skills))
         (user (if context
-                  (format nil "参考资料:~%~A~%~%~A" (lift context) prompt)
+                  (format nil "参考资料:~%~A~%~%~A" (s2b context) prompt)
                   prompt)))
     (append (when sys (list (%msg "system" sys)))
             (loop for h in history collect (%msg (string-downcase (string (car h))) (cdr h)))
@@ -189,8 +189,8 @@
 (defun ai (prompt &key (model :unset) (system :unset) (into :unset) (params :unset)
                        (max-retries :unset) (format :unset) (read-package :unset)
                        (context :unset) (history :unset) (skills :unset) (settings *settings*))
-  "Typed layer = lower ∘ llm ∘ lift, with resampling: lift inputs into messages, chat,
-   then lower onto the :into schema; on failure feed the reason back and resample (retry).
+  "Typed layer = b2s ∘ llm ∘ s2b, with resampling: s2b inputs into messages, chat,
+   then b2s onto the :into schema; on failure feed the reason back and resample (retry).
    Returns a validated value. All inputs default from *settings*; :params deep-merges.
    Tool use is agentic -> see REACT / plan-execute, not here."
   (let* ((m       (or (%setting settings :model model nil) *model*))
@@ -211,10 +211,10 @@
          (feedback nil))
     (unless m (error 'ai-error :reason :no-model))
     (dotimes (i (max 1 retries))
-      (let* ((msgs (assemble-messages prompt :system sysprompt :context ctx :history hist))  ; ↑ lift
+      (let* ((msgs (assemble-messages prompt :system sysprompt :context ctx :history hist))  ; s2b
              (msgs (if feedback (append msgs (list (%msg "user" feedback))) msgs))
              (raw (chat m msgs :params rp)))                                                  ; llm
-        (multiple-value-bind (val okp reason) (lower raw :into into* :format fmt :read-package rpk) ; ↓ lower
+        (multiple-value-bind (val okp reason) (b2s raw :into into* :format fmt :read-package rpk) ; b2s
           (if okp
               (return-from ai (values val))
               (setf feedback                                                                  ; resample w/ feedback

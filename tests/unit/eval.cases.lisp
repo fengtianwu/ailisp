@@ -17,14 +17,14 @@
   (:name "with-settings-overrides"
    :form (with-settings (:max-retries 3) (getf *settings* :max-retries)) :value 3)
 
-  ;; lift ↑ : symbolic value -> prompt text
-  (:name "lift-string"  :form (lift "hi")               :value "hi")
-  (:name "lift-number"  :form (lift 42)                 :value "42")
+  ;; s2b : symbolic value -> prompt text (into LLM)
+  (:name "s2b-string"  :form (s2b "hi")               :value "hi")
+  (:name "s2b-number"  :form (s2b 42)                 :value "42")
 
-  ;; lower ↓ : model text -> constrained symbolic value (values value ok reason)
-  (:name "lower-json-ok"
-   :form (multiple-value-list (lower "{\"a\": 1}" :into '{:a int}))    :value [(%map :a 1) t nil])
-  (:name "lower-type-mismatch"
-   :form (multiple-value-list (lower "{\"a\": \"x\"}" :into '{:a int})) :value [nil nil :type-mismatch])
-  (:name "lower-unparseable"
-   :form (multiple-value-list (lower "@@@" :into '{:a int}))            :value [nil nil :unparseable]))
+  ;; b2s : model text -> constrained symbolic value (out of LLM); (values value ok reason)
+  (:name "b2s-json-ok"
+   :form (multiple-value-list (b2s "{\"a\": 1}" :into '{:a int}))    :value [(%map :a 1) t nil])
+  (:name "b2s-type-mismatch"
+   :form (multiple-value-list (b2s "{\"a\": \"x\"}" :into '{:a int})) :value [nil nil :type-mismatch])
+  (:name "b2s-unparseable"
+   :form (multiple-value-list (b2s "@@@" :into '{:a int}))            :value [nil nil :unparseable]))

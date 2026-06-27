@@ -13,7 +13,7 @@
    #:make-mock-model #:mock-model #:mock-model-calls
    #:make-openai-model #:openai-model
    ;; ai
-   #:ai #:llm #:lift #:lower #:assemble-messages #:ai-error #:ai-error-reason #:read-sexpr-safe #:resolve-params
+   #:ai #:llm #:s2b #:b2s #:assemble-messages #:ai-error #:ai-error-reason #:read-sexpr-safe #:resolve-params
    #:*settings* #:with-settings #:%merge-params #:%merge-plist
    ;; skills
    #:*hiai-url* #:fetch-skill #:apply-skills
