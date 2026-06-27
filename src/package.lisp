@@ -20,7 +20,7 @@
    ;; agent
    #:tool #:make-tool #:tool-name #:tool-fn #:tool-doc #:react #:build-agent
    ;; patterns (compositions of the cell)
-   #:reflect #:vote #:%majority #:llm-tool
+   #:reflect #:vote #:%majority #:llm-tool #:solve
    ;; rag (pillar 2 via hiai-core KB)
    #:kb-search #:kb-context #:rag #:kb-parse-hits #:kb-tool
    ;; wolfram (a second eval-language target via hiai-core)

@@ -90,6 +90,8 @@
                            append (list (if (stringp k)
                                             (intern (string-upcase k) :keyword) k)
                                         (%kw-keys v)))))
+        ((eq x :false) nil)     ; JSON false -> Lisp NIL (so `bool` validates & `if` works)
+        ((eq x :true) t)        ; (json-decode already yields T for true; belt & braces)
         ((consp x) (mapcar #'%kw-keys x))
         (t x)))
 

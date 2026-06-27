@@ -30,6 +30,8 @@
    :form (multiple-value-list (b2s "{\"a\": \"x\"}" :into '{:a int})) :value [nil nil :type-mismatch])
   (:name "b2s-unparseable"
    :form (multiple-value-list (b2s "@@@" :into '{:a int}))            :value [nil nil :unparseable])
+  (:name "b2s-json-false-is-nil"   ; JSON false -> NIL so `bool` validates
+   :form (multiple-value-list (b2s "{\"f\": false}" :into '{:f bool}))  :value [(%map :f nil) t nil])
 
   ;; agent patterns = thin compositions of the cell (mock model = no network)
   (:name "majority"            :form (%majority '("x" "y" "x"))                       :value "x")
@@ -45,4 +47,14 @@
   ;; wolfram = a second eval-language target; parse its /wolfram response (pure)
   (:name "wolfram-success"       :form (%wolfram-result {"ran" #t "exit_code" 0 "text" "  Cos[x]  "}) :value "Cos[x]")
   (:name "wolfram-needs-approval" :form (%wolfram-result {"ran" #f "needs_approval" #t})              :value [:needs-approval])
-  (:name "wolfram-error"         :form (%wolfram-result {"ran" #t "exit_code" 255 "text" "boom"})     :value [:error "boom"]))
+  (:name "wolfram-error"         :form (%wolfram-result {"ran" #t "exit_code" 255 "text" "boom"})     :value [:error "boom"])
+
+  ;; recursive divide & conquer: root splits into B,C; leaves answer; combine (llm->llm)
+  (:name "solve-divide-conquer"
+   :form (solve "A" :max-depth 2
+                :model (make-mock-model :responses
+                         '({:split #t :subtasks ["B" "C"] :answer ""}
+                           {:split #f :subtasks [] :answer "b"}
+                           {:split #f :subtasks [] :answer "c"}
+                           {:answer "combined-bc"})))
+   :value "combined-bc"))
