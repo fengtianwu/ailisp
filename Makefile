@@ -42,3 +42,7 @@ repl:
 # Incremental-construction agent demo (model builds helpers bottom-up).
 build:
 	$(SBCL) --script run-build.lisp
+
+# Agent patterns as cell compositions (reflect / vote / multi-agent).
+patterns:
+	$(SBCL) --script run-patterns.lisp

@@ -29,4 +29,15 @@
   (:name "b2s-type-mismatch"
    :form (multiple-value-list (b2s "{\"a\": \"x\"}" :into '{:a int})) :value [nil nil :type-mismatch])
   (:name "b2s-unparseable"
-   :form (multiple-value-list (b2s "@@@" :into '{:a int}))            :value [nil nil :unparseable]))
+   :form (multiple-value-list (b2s "@@@" :into '{:a int}))            :value [nil nil :unparseable])
+
+  ;; agent patterns = thin compositions of the cell (mock model = no network)
+  (:name "majority"            :form (%majority '("x" "y" "x"))                       :value "x")
+  (:name "vote-self-consistency"
+   :form (vote "q" :model (make-mock-model :responses '("A" "B" "A" "A" "C")) :n 5)   :value "A")
+  (:name "reflect-iterates"
+   :form (reflect "q" :model (make-mock-model :responses '("draft" "better" "best")) :rounds 2)
+   :value "best")
+  (:name "llm-tool-calls-sub-llm"
+   :form (funcall (tool-fn (llm-tool 'helper :model (make-mock-model :responses '("sub says hi")))) "hi?")
+   :value "sub says hi"))
