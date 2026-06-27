@@ -143,10 +143,27 @@
   `(let ((*settings* (%merge-plist *settings* (list ,@overrides)))) ,@body))
 
 ;;; ---- the symbolic<->probabilistic boundary: s2b (into LLM) / b2s (out of LLM) ----
-(defun s2b (x)
-  "symbolic -> bayesian: encode a symbolic value into prompt text (into the LLM).
-   Strings pass through; other values are printed readably."
-  (if (stringp x) x (princ-to-string x)))
+(defun %jsonable (x)
+  "Convert an ailisp value to a json-encode-friendly form (%map->alist string keys,
+   keyword->name, list->array, t->true)."
+  (cond ((and (consp x) (sym= (car x) "%MAP"))
+         (loop for (k v) on (cdr x) by #'cddr
+               collect (cons (string-downcase (string k)) (%jsonable v))))
+        ((keywordp x) (string-downcase (symbol-name x)))
+        ((eq x t) :true)
+        ((consp x) (mapcar #'%jsonable x))
+        (t x)))
+
+(defun s2b (x &key (as :text))
+  "symbolic -> bayesian: render a symbolic value into prompt text (into the LLM),
+   in the target syntactic register (mirrors b2s's :format):
+     :text  (default) grounding -- strings pass through, else printed readably
+     :sexpr Lisp source (the printer; inverse of b2s :sexpr read)
+     :json  JSON       (inverse of b2s :json parse)"
+  (ecase as
+    (:text  (if (stringp x) x (princ-to-string x)))
+    (:sexpr (let ((*print-case* :downcase)) (write-to-string x :pretty nil :escape t)))
+    (:json  (json-encode (%jsonable x)))))
 
 (defun b2s (raw &key into (format :json) read-package)
   "bayesian -> symbolic: project model text onto a CONSTRAINED symbolic value (out of

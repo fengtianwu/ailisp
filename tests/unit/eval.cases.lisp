@@ -17,9 +17,11 @@
   (:name "with-settings-overrides"
    :form (with-settings (:max-retries 3) (getf *settings* :max-retries)) :value 3)
 
-  ;; s2b : symbolic value -> prompt text (into LLM)
-  (:name "s2b-string"  :form (s2b "hi")               :value "hi")
-  (:name "s2b-number"  :form (s2b 42)                 :value "42")
+  ;; s2b : symbolic value -> prompt text (into LLM), per target register
+  (:name "s2b-string"     :form (s2b "hi")                       :value "hi")
+  (:name "s2b-number"     :form (s2b 42)                         :value "42")
+  (:name "s2b-json"       :form (s2b '(%map :a 1) :as :json)     :value "{\"a\":1}")
+  (:name "s2b-sexpr"      :form (s2b '(+ 1 2) :as :sexpr)        :value "(+ 1 2)")
 
   ;; b2s : model text -> constrained symbolic value (out of LLM); (values value ok reason)
   (:name "b2s-json-ok"
