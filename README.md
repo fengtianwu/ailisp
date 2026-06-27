@@ -8,15 +8,44 @@
 
 ---
 
-## 三个核心洞见
+## 核心模型:三个原语
 
-| 业界叫法 | 在 ailisp 里 |
-|---|---|
-| Tool use / function calling | **`eval`** —— 模型吐 `(get_weather "北京")`,我们求值它 |
-| Agent / ReAct 循环 | **REPL** —— Read(LLM)→ Eval → Loop |
-| Prompt chain / RAG / 反思 / 多 agent | **函数组合 / 闭包 / 管道** —— 都是 `(f (g x))` |
+确定性的**符号代码** ↔ 概率的 **LLM**,边界由**三个基本函数**中介(其余全是用 Lisp 胶水组合它们):
 
-AI 框架里约 80% 是在补语言的课(组合性、闭包、宏、eval);ailisp 让这部分免费蒸发,把工程集中在真正硬的 4 件事上。
+| 原语 | 方向 | 做什么 |
+|---|---|---|
+| **`s2b`**(symbolic→bayesian) | 进 LLM | 把符号值/上下文编码进提示文本(`:as :text/:sexpr/:json`) |
+| **`llm`** | 文本→文本 | 采样 `y ~ p(·\|x)` |
+| **`b2s`**(bayesian→symbolic) | 出 LLM | 把概率文本投影回**受约束**的符号值(parse+校验;失败给原因)。代码模式 + `safe-eval` = 执行 |
+
+```
+符号 --s2b--> 文本 --llm--> 文本 --b2s--> 符号        ; ai = b2s ∘ llm ∘ s2b + 失败重采样
+```
+**`b2s` 里天然含"约束 + 重试"**(贝叶斯的投影 + 拒绝采样);它是系统的**信任边界**——近似的涌现逻辑在这里坍缩成可信的精确符号(`safe-eval` 之于 LLM,如纸笔之于前额叶)。
+
+三个洞见随之而来:**tool-use = `eval`**(模型吐 `(get_weather "北京")`,b2s 代码模式 + safe-eval 跑它);**agent = REPL**(Read=llm → Eval → Loop);**llm 是函数 → 可嵌套、可递归**。
+
+## agent 谱 = 同一个细胞的组合
+
+每个有名字的 agent 模式 = 把细胞 `b2s∘llm∘s2b` 串联 / 迭代 / 扇出 / 递归。都已实现且 live 验证:
+
+| 模式 | = 细胞的 | 实现 |
+|---|---|---|
+| 结构化调用 | 一个细胞 + 重采样 | `ai` |
+| 链式 / RAG | 串联(+context) | 嵌套 `ai` / `rag` |
+| 反思 | 迭代(不动点) | `reflect` |
+| 自一致投票 | 扇出 + 符号归约 | `vote` |
+| ReAct(工具=eval) | 迭代 + 代码模式 b2s | `react` |
+| plan-execute(代码合成) | 一次代码模式 + eval | `bench/compose` |
+| 增量构造 | 迭代进持久工作区 | `build-agent` |
+| 多 agent | 工具=llm 函数 → **llm 调 llm** | `llm-tool` |
+| 递归分治 | **递归**(深度有界) | `solve` |
+
+> **关键:多 agent / 层级 / 递归分治不需要任何框架**——"子 agent" 就是个 llm 函数,"多 agent" 就是 llm 函数互相调,递归刹车就是 `safe-eval` 的预算/深度。AI 框架里约 80% 是在补语言的课(组合/闭包/eval);ailisp 让这部分免费蒸发,工程集中在 4 件硬事上。
+
+## 多语言 eval 目标
+
+`b2s` 的代码端(`{print, read, eval}`)是唯一语言相关的部分;骨架语言无关。换一门语言 = 加一个 eval-工具。已实证 **Lisp(宿主)+ Wolfram**:模型写 `(wolfram "Integrate[Sin[x]^2, x]")`,`safe-eval` 经 hiai-core `/wolfram` 求值 → `x/2 - Sin[2*x]/4`。MATLAB/Python/SQL 同法可接。
 
 ## 4 根柱子(真正的工程量)
 
@@ -43,8 +72,8 @@ react / rag / plan-execute                                        ← agentic �
 
 ## 现状
 
-- **`make test` 71/71**(纯 SBCL,无网络,确定性)。
-- 实现:`src/`(reader / schema / safe-eval / model / ai / agent / rag / pipe / skills),`bench/`(BFCL + 组合性基准),`tests/`,`demo.lisp`,`repl.lisp`。
+- **`make test` 85/85**(纯 SBCL,无网络,确定性)。
+- 实现:`src/`(reader / schema / safe-eval / model / ai / agent / rag / build / patterns / wolfram / skills),`bench/`(BFCL + 组合性基准),`tests/`,`demo.lisp` / `showcase.lisp` / `repl.lisp`。
 - live 路径接 hiai-core 的本地模型(OpenAI 兼容,`:8080`)。
 
 ## 实证结论(诚实、跨模型、可复现)
@@ -64,9 +93,12 @@ react / rag / plan-execute                                        ← agentic �
 需要 [hiai-core](../hiai-core) 在跑并加载了 chat 模型(代码模型如 qwen-coder-next 最适合 plan-execute)。
 
 ```sh
-make test        # 确定性测试集 71/71(无需模型)
-make demo        # 5 个例子:抽取 / 分类 / plan-execute / ReAct / 管道
+make test        # 确定性测试集 85/85(无需模型)
+make showcase    # 全套玩法巡演:三原语 / 各 agent 模式 / 多语言 eval(可编辑各段)
+make demo        # 4 个快例:抽取 / 分类 / plan-execute / ReAct
 make repl        # 交互式 ailisp REPL
+make build       # 增量构造 agent(模型自底向上搭 helper)
+make patterns    # reflect / vote / 多 agent(llm-tool)
 make test-live   # live:自由文本 + schema 化抽取
 make agent       # ReAct agent(tool-use = eval)
 make rag         # RAG(检索 + 带引用作答)

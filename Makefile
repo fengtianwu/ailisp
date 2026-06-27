@@ -46,3 +46,7 @@ build:
 # Agent patterns as cell compositions (reflect / vote / multi-agent).
 patterns:
 	$(SBCL) --script run-patterns.lisp
+
+# Full guided tour of all the patterns (edit/comment sections inside).
+showcase:
+	$(SBCL) --script showcase.lisp

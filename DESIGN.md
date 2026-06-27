@@ -6,6 +6,23 @@
 
 ---
 
+## 0. 核心模型:三原语 + agent 综合(v0.2 提炼)
+
+确定性**符号代码** ↔ 概率 **LLM** 的边界,由三个基本函数中介,其余皆为 Lisp 胶水对它们的组合:
+
+- **`s2b`**(symbolic→bayesian):符号值 → 提示文本(`:as :text/:sexpr/:json`)。
+- **`llm`**:文本 → 文本(采样)。
+- **`b2s`**(bayesian→symbolic):文本 → 受约束的符号值(parse+校验,失败给原因;代码模式 + `safe-eval` = 执行)。
+
+`ai = b2s ∘ llm ∘ s2b + 重采样`。**`b2s` 是信任边界**(约束+重试=贝叶斯投影+拒绝采样)。
+**agent 谱 = 把这个细胞 串联/迭代/扇出/递归**:`reflect`(迭代)、`vote`(扇出)、`react`(迭代+代码模式)、
+`build-agent`(迭代进持久工作区)、`llm-tool`(工具=llm函数→llm 调 llm=多 agent)、`solve`(递归分治)。
+**层级/多agent/分治无需框架**——子 agent 就是 llm 函数,递归刹车就是 `safe-eval` 预算/深度。
+**多语言**:`b2s` 的代码端 `{print,read,eval}` 是唯一语言相关处;换语言=加 eval-工具(已实证 Lisp + Wolfram)。
+完整表见 [`README.md`](README.md)。下文 §1–§12 是这套提炼之前的逐步设计记录(M0→M8)。
+
+---
+
 ## 1. 定位与一句话
 
 **ailisp = 为"人 + LLM 协作编程"设计的 homoiconic Lisp,LLM 是一种带类型、带成本、
