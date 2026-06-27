@@ -142,8 +142,24 @@
   "Run BODY with *settings* = current *settings* overlaid with OVERRIDES (a plist)."
   `(let ((*settings* (%merge-plist *settings* (list ,@overrides)))) ,@body))
 
+;;; ---- the symbolic<->probabilistic boundary: lift ↑ and lower ↓ ----
+(defun lift (x)
+  "↑ encode a symbolic value into prompt text (deterministic -> LLM boundary).
+   Strings pass through; other values are printed readably."
+  (if (stringp x) x (princ-to-string x)))
+
+(defun lower (raw &key into (format :json) read-package)
+  "↓ project model text onto a CONSTRAINED symbolic value (LLM -> deterministic
+   boundary). => (values value ok reason). ok=nil (+reason :unparseable | a validate
+   reason) if it doesn't parse or fails the :into schema. For CODE: :format :sexpr,
+   then safe-eval the returned form. (Retry = resample: compose llm+lower in a loop.)"
+  (multiple-value-bind (val okp) (parse-output raw into format read-package)
+    (cond ((not okp) (values nil nil :unparseable))
+          ((null into) (values val t nil))
+          (t (multiple-value-bind (pass reason) (validate into val)
+               (if pass (values val t nil) (values nil nil (or reason :invalid))))))))
+
 ;;; ---- assembly + the two layers (llm raw text / ai typed value) ----
-(defun %render-context (c) (if (stringp c) c (princ-to-string c)))
 
 (defun assemble-messages (prompt &key system context history skills)
   "Build the messages array from convenience inputs: SYSTEM (+ SKILLS playbooks) ->
@@ -151,7 +167,7 @@
    data prepended to the user message; PROMPT -> the user message."
   (let ((sys (apply-skills system skills))
         (user (if context
-                  (format nil "参考资料:~%~A~%~%~A" (%render-context context) prompt)
+                  (format nil "参考资料:~%~A~%~%~A" (lift context) prompt)
                   prompt)))
     (append (when sys (list (%msg "system" sys)))
             (loop for h in history collect (%msg (string-downcase (string (car h))) (cdr h)))
@@ -173,10 +189,10 @@
 (defun ai (prompt &key (model :unset) (system :unset) (into :unset) (params :unset)
                        (max-retries :unset) (format :unset) (read-package :unset)
                        (context :unset) (history :unset) (skills :unset) (settings *settings*))
-  "Typed layer over CHAT: schema-constrained output (:into rendered into the system
-   prompt), parsed + validated, retried WITH error feedback. Returns a validated value.
-   All inputs default from *settings* (or :settings); :params deep-merges. Tool use is
-   agentic -> see REACT / plan-execute, not here."
+  "Typed layer = lower ∘ llm ∘ lift, with resampling: lift inputs into messages, chat,
+   then lower onto the :into schema; on failure feed the reason back and resample (retry).
+   Returns a validated value. All inputs default from *settings*; :params deep-merges.
+   Tool use is agentic -> see REACT / plan-execute, not here."
   (let* ((m       (or (%setting settings :model model nil) *model*))
          (into*   (%setting settings :into into nil))
          (rp      (resolve-params (%merge-params (getf settings :params :auto) params)
@@ -195,18 +211,14 @@
          (feedback nil))
     (unless m (error 'ai-error :reason :no-model))
     (dotimes (i (max 1 retries))
-      (let* ((msgs (assemble-messages prompt :system sysprompt :context ctx :history hist))
+      (let* ((msgs (assemble-messages prompt :system sysprompt :context ctx :history hist))  ; ↑ lift
              (msgs (if feedback (append msgs (list (%msg "user" feedback))) msgs))
-             (raw (chat m msgs :params rp)))
-        (multiple-value-bind (val okp) (parse-output raw into* fmt rpk)
-          (cond
-            ((not okp)
-             (setf feedback "Your previous output could not be parsed. Re-output ONLY the required format, nothing else."))
-            ((null into*) (return-from ai (values val)))
-            (t (multiple-value-bind (pass reason field) (validate into* val)
-                 (if pass
-                     (return-from ai (values val))
-                     (setf feedback
-                           (format nil "Your previous output failed validation: ~A~@[ (field ~A)~]. Fix it and re-output ONLY the JSON."
-                                   reason field)))))))))
+             (raw (chat m msgs :params rp)))                                                  ; llm
+        (multiple-value-bind (val okp reason) (lower raw :into into* :format fmt :read-package rpk) ; ↓ lower
+          (if okp
+              (return-from ai (values val))
+              (setf feedback                                                                  ; resample w/ feedback
+                    (if (eq reason :unparseable)
+                        "Your previous output could not be parsed. Re-output ONLY the required format, nothing else."
+                        (format nil "Your previous output failed validation: ~A. Fix it and re-output ONLY the JSON." reason)))))))
     (error 'ai-error :reason :schema-violation)))
