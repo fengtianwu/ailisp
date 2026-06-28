@@ -16,6 +16,19 @@
 (defmacro sec (title &body body)
   `(progn (format t "~&~%~%════════ ~A ════════~%" ,title) ,@body (finish-output)))
 
+;;; ── 导读:这趟巡演覆盖什么 ──────────────────────────────────────
+(format t "~&━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━~%")
+(format t "  ailisp 巡演:一切都是三原语 s2b/llm/b2s 的组合(串 / 迭代 / 扇出 / 递归)~%")
+(format t "    §1-3   原语 → ai 结构化抽取 → 链式组合~%")
+(format t "    §4-5   reflect(迭代/不动点) · vote(扇出 + 符号归约)~%")
+(format t "    §6-7   react(工具 = eval) · plan-execute(写一段程序 -> eval)~%")
+(format t "    §8     build-agent:spec → 桩 → verify → impl(自顶向下验证,★本轮新增)~%")
+(format t "    §9-10  solve(递归分治) · 多 agent(llm-tool:llm 调 llm)~%")
+(format t "    §11    Wolfram(符号数学)  ·  §11b SQL(声明式查询,★本轮新增第三门语言)~%")
+(format t "    §12    settings:全局默认 + with-settings 单次覆盖~%")
+(format t "    旁注   intent 宏 = 展开期把自然语言固化成代码(见 make intent,不在本巡演内)~%")
+(format t "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━~%")
+
 ;;; shared canned tools (deterministic)
 (defun %pop (c) (cond ((search "北京" c) 22) ((search "上海" c) 25) ((search "广州" c) 19)
                       ((search "深圳" c) 18) (t 0)))
