@@ -11,7 +11,8 @@
     "tests/unit/params.cases.lisp"
     "tests/unit/grade.cases.lisp"
     "tests/unit/bfcl.cases.lisp"
-    "tests/unit/build.cases.lisp"))
+    "tests/unit/build.cases.lisp"
+    "tests/unit/intent.cases.lisp"))
 
 (defun read-cases-file (path)
   "Return the list of (deftestset NAME case...) forms in PATH, read as data."
@@ -137,6 +138,24 @@
         (values t nil)
         (values nil (format nil "result ~S != ~S" result (getf c :expect))))))
 
+(defun run-intent-case (c)
+  "Drive synth-fn-form with a mock model (scripted candidate bodies). Deterministic, no
+   network: asserts the synthesizer parses/safety-walks/example-verifies + retries."
+  (let* ((m (ailisp:make-mock-model :responses (getf c :script))))
+    (multiple-value-bind (body ok reason)
+        (ailisp:synth-fn-form (getf c :desc) (getf c :params)
+                              :examples (getf c :examples) :tools (getf c :tools)
+                              :self (getf c :self) :model m :max-tries 4
+                              :read-package (find-package :ailisp/tests))
+      (declare (ignore reason))
+      (ecase (getf c :expect)
+        (:ok (cond ((not ok) (values nil "expected synthesis to succeed"))
+                   ((not (equal body (getf c :body)))
+                    (values nil (format nil "body ~S != ~S" body (getf c :body))))
+                   (t (values t nil))))
+        (:fail (if ok (values nil (format nil "expected failure but got ~S" body))
+                   (values t nil)))))))
+
 (defun run-params-case (c)
   (let ((p (ailisp:resolve-params :auto :into (getf c :into)
                                         :tools (getf c :tools)
@@ -177,6 +196,7 @@
         ((string-equal testset-name "EVAL")            (run-eval-case c))
         ((string-equal testset-name "PARAMS")          (run-params-case c))
         ((string-equal testset-name "BUILD")           (run-build-case c))
+        ((string-equal testset-name "INTENT")          (run-intent-case c))
         (t (values nil (format nil "unknown testset ~A" testset-name)))))
 
 (defun run-all ()

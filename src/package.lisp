@@ -26,6 +26,7 @@
    ;; wolfram (a second eval-language target via hiai-core)
    #:wolfram-eval #:wolfram-tool #:%wolfram-result
    #:sql-eval #:sql-tool #:%sql-guard
+   #:intent #:define-intent #:synth-fn-form #:intent-expand
    ;; bench (M7)
    #:*last-usage* #:*bench-tasks* #:run-bench #:run-task
    #:parse-call-sexpr #:parse-call-json #:grade-call #:arg=

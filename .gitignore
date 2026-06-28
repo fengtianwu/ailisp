@@ -17,6 +17,9 @@ system-index.txt
 # test fixtures recorded from live models (regenerate with `make test-live`)
 tests/fixtures/*.json
 
+# `intent` synthesis cache (model-specific; in real "freeze the program" use you COMMIT it)
+src/intent-cache.lisp
+
 # Berkeley FCL dataset (download separately; see DESIGN.md / `make bfcl`)
 bfcl-data/
 

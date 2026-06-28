@@ -78,8 +78,8 @@ react / rag / plan-execute                                        ← agentic �
 
 ## 现状
 
-- **`make test` 88/88**(纯 SBCL,无网络,确定性)。
-- 实现:`src/`(reader / schema / safe-eval / model / ai / agent / rag / build / patterns / wolfram / sql / skills),`bench/`(BFCL + 组合性基准),`tests/`,`demo.lisp` / `showcase.lisp` / `repl.lisp`。
+- **`make test` 97/97**(纯 SBCL,无网络,确定性)。
+- 实现:`src/`(reader / schema / safe-eval / model / ai / agent / rag / build / patterns / wolfram / sql / intent / skills),`bench/`(BFCL + 组合性基准),`tests/`,`demo.lisp` / `showcase.lisp` / `repl.lisp`。
 - live 路径接 hiai-core 的本地模型(OpenAI 兼容,`:8080`)。
 
 ## 实证结论(诚实、跨模型、可复现)
@@ -99,7 +99,7 @@ react / rag / plan-execute                                        ← agentic �
 需要 [hiai-core](../hiai-core) 在跑并加载了 chat 模型(代码模型如 qwen-coder-next 最适合 plan-execute)。
 
 ```sh
-make test        # 确定性测试集 88/88(无需模型)
+make test        # 确定性测试集 97/97(无需模型)
 make showcase    # 全套玩法巡演:三原语 / 各 agent 模式 / 多语言 eval(可编辑各段)
 make demo        # 4 个快例:抽取 / 分类 / plan-execute / ReAct
 make repl        # 交互式 ailisp REPL
@@ -112,6 +112,7 @@ make bench       # s-expr vs JSON 头对头(自建集)
 make bfcl N=40   # 真实 Berkeley FCL simple
 make compose     # plan-execute vs JSON 工具链(多步 + 控制流)
 make sql         # SQL 作为声明式 eval 语言(离线自检 + live react)
+make intent      # intent 宏:展开期 LLM 代码合成,固化到磁盘缓存(跑两次看离线命中)
 ```
 
 小试(`make repl` 里):
@@ -127,5 +128,7 @@ ailisp 与 [Pel](https://arxiv.org/abs/2505.13453)(homoiconic LLM 编排语言)�
 ## 还在路上
 
 - MCP 作为外部 tool 来源(`mcp-lisp`/`40ants-MCP`)
-- 语言层:`intent` 宏(展开期调 LLM 固化成代码)、完整 REPeL(条件/重启 + 自愈)、符号 fallback、NL reader 宏
+- 语言层:完整 REPeL(条件/重启 + 自愈)、符号 fallback、NL reader 宏
 - record/replay fixtures 让 live 检查进 CI;更多模型/任务类目
+
+> **已落地**:`intent` 宏(展开期调 LLM 把自然语言**固化**成代码)——`(define-intent fib (n) "第 n 个斐波那契数" :examples (((10) 55)))` 在 macroexpand 时让模型合成函数体、`walk-check` 把关、例子验证后冻结,并**按 intent 文本缓存到磁盘**(首次在线合成,之后纯离线命中,提交缓存即固化整个程序)。`make intent`。

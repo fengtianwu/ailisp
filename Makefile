@@ -51,6 +51,10 @@ patterns:
 sql:
 	$(SBCL) --script run-sql.lisp
 
+# `intent`: compile-time LLM code synthesis (固化), frozen to a disk cache. Run twice.
+intent:
+	$(SBCL) --script run-intent.lisp
+
 # Full guided tour of all the patterns (edit/comment sections inside).
 showcase:
 	$(SBCL) --script showcase.lisp

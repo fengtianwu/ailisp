@@ -41,6 +41,12 @@
 **多语言**:`b2s` 的代码端 `{print,read,eval}` 是唯一语言相关处;换语言=加 eval-工具。已实证**三门、跨范式**:
 Lisp(宿主,函数式)+ Wolfram(符号数学,经 hiai-core `/wolfram`)+ SQL(声明式/关系,经 `sqlite3 -json`,单语句只读门)。
 骨架 `s2b/llm/b2s` 不变,只换 `eval_X/read_X`(子进程或 HTTP)。
+
+**`intent` 宏(已实现,src/intent.lisp):COMPILE-TIME 代码合成(固化)。** `b2s(:sexpr 代码模式)∘llm∘s2b` 在
+**展开期**求值并冻结——`(define-intent fib (n) "第n个斐波那契" :examples (((10) 55)))` 在 macroexpand 时让模型合成
+函数体,`walk-check` 把关 + 例子验证(支持自递归,验证时临时 fbind 该名),通过后 expand 成普通 `(defun ...)`。
+**可复现性靠磁盘缓存**:按 `(name params description examples)` 缓存,首次在线合成,之后纯离线命中(提交缓存=冻结程序);
+record/replay 在这里自然落地。这是最强的「lower↓」——把自然语言一次性降解为冻结的符号代码。
 完整表见 [`README.md`](README.md)。下文 §1–§12 是这套提炼之前的逐步设计记录(M0→M8)。
 
 ---
