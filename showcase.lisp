@@ -100,10 +100,10 @@ insert into city values ('Tokyo',37),('Delhi',32),('Paris',11),('NewYork',19),('
 
 ;; ── 12. settings:全局默认 + 单次覆盖 ──────────────────────────
 (sec "12. settings / with-settings"
-  (setf *settings* (list :system "Answer in ONE word." :params '(:temp 0)))
-  (format t "默认(一词): ~A~%" (llm "法国的首都?"))
-  (with-settings (:system "用中文一个词回答。")
-    (format t "with-settings(中文): ~A~%" (llm "法国的首都?")))
+  (setf *settings* (list :system "Answer in ONE English word." :params '(:temp 0)))
+  (format t "默认(英文一词): ~A~%" (llm "What is the capital of France?"))
+  (with-settings (:system "只用一个中文词回答,不要英文。")
+    (format t "with-settings(中文一词): ~A~%" (llm "What is the capital of France?")))
   (setf *settings* nil))
 
 (format t "~&~%(改 showcase.lisp 各段的提示词再跑;或注释掉不想跑的段。)~%")
