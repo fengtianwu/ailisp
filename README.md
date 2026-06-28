@@ -45,7 +45,13 @@
 
 ## 多语言 eval 目标
 
-`b2s` 的代码端(`{print, read, eval}`)是唯一语言相关的部分;骨架语言无关。换一门语言 = 加一个 eval-工具。已实证 **Lisp(宿主)+ Wolfram**:模型写 `(wolfram "Integrate[Sin[x]^2, x]")`,`safe-eval` 经 hiai-core `/wolfram` 求值 → `x/2 - Sin[2*x]/4`。MATLAB/Python/SQL 同法可接。
+`b2s` 的代码端(`{print, read, eval}`)是唯一语言相关的部分;骨架语言无关。换一门语言 = 加一个 eval-工具。已实证**三门、跨范式**:
+
+- **Lisp(宿主)** —— 函数式,`safe-eval` 静态 code-walk + 锁环境。
+- **Wolfram** —— 符号数学,模型写 `(wolfram "Integrate[Sin[x]^2, x]")` → 经 hiai-core `/wolfram` → `x/2 - Sin[2*x]/4`。
+- **SQL(SQLite)** —— **声明式/关系型**,模型写 `(sql "SELECT name FROM city WHERE pop>20")` → 经 `sqlite3 -json`(单语句只读 SELECT 安全门)→ 行解码回 `(%map ...)` 数据。
+
+跨这三门唯一变的只有 `eval_X`/`read_X`(子进程或 HTTP),`s2b`/`llm`/`b2s` 骨架不动。MATLAB/Python 同法可接(本地均已具备引擎)。
 
 ## 4 根柱子(真正的工程量)
 
@@ -73,7 +79,7 @@ react / rag / plan-execute                                        ← agentic �
 ## 现状
 
 - **`make test` 88/88**(纯 SBCL,无网络,确定性)。
-- 实现:`src/`(reader / schema / safe-eval / model / ai / agent / rag / build / patterns / wolfram / skills),`bench/`(BFCL + 组合性基准),`tests/`,`demo.lisp` / `showcase.lisp` / `repl.lisp`。
+- 实现:`src/`(reader / schema / safe-eval / model / ai / agent / rag / build / patterns / wolfram / sql / skills),`bench/`(BFCL + 组合性基准),`tests/`,`demo.lisp` / `showcase.lisp` / `repl.lisp`。
 - live 路径接 hiai-core 的本地模型(OpenAI 兼容,`:8080`)。
 
 ## 实证结论(诚实、跨模型、可复现)
@@ -105,6 +111,7 @@ make rag         # RAG(检索 + 带引用作答)
 make bench       # s-expr vs JSON 头对头(自建集)
 make bfcl N=40   # 真实 Berkeley FCL simple
 make compose     # plan-execute vs JSON 工具链(多步 + 控制流)
+make sql         # SQL 作为声明式 eval 语言(离线自检 + live react)
 ```
 
 小试(`make repl` 里):

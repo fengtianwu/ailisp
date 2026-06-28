@@ -47,6 +47,10 @@ build:
 patterns:
 	$(SBCL) --script run-patterns.lisp
 
+# SQL as a third eval language (declarative): self-check + live react with a SQL tool.
+sql:
+	$(SBCL) --script run-sql.lisp
+
 # Full guided tour of all the patterns (edit/comment sections inside).
 showcase:
 	$(SBCL) --script showcase.lisp

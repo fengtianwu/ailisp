@@ -38,7 +38,9 @@
 > `unwind-protect` 一干二净还原)。`solve` 则把状态完全交给调用栈:**递归即分解,`max-depth` 即刹车**,
 > 「分治 / 层级 agent / orchestrator-worker」三个名字在这里是同一段 8 行递归。
 
-**多语言**:`b2s` 的代码端 `{print,read,eval}` 是唯一语言相关处;换语言=加 eval-工具(已实证 Lisp + Wolfram)。
+**多语言**:`b2s` 的代码端 `{print,read,eval}` 是唯一语言相关处;换语言=加 eval-工具。已实证**三门、跨范式**:
+Lisp(宿主,函数式)+ Wolfram(符号数学,经 hiai-core `/wolfram`)+ SQL(声明式/关系,经 `sqlite3 -json`,单语句只读门)。
+骨架 `s2b/llm/b2s` 不变,只换 `eval_X/read_X`(子进程或 HTTP)。
 完整表见 [`README.md`](README.md)。下文 §1–§12 是这套提炼之前的逐步设计记录(M0→M8)。
 
 ---

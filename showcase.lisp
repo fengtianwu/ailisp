@@ -6,7 +6,8 @@
 (setf sb-impl::*default-external-format* :utf-8)
 (let ((root (or *load-pathname* *default-pathname-defaults*)))
   (dolist (f '("src/package" "src/reader" "src/schema" "src/model" "src/skills"
-               "src/ai" "src/safe-eval" "src/agent" "src/rag" "src/build" "src/patterns" "src/wolfram"))
+               "src/ai" "src/safe-eval" "src/agent" "src/rag" "src/build" "src/patterns"
+               "src/wolfram" "src/sql"))
     (handler-bind ((warning #'muffle-warning))
       (load (merge-pathnames (concatenate 'string f ".lisp") root)))))
 (in-package :ailisp)
@@ -86,6 +87,16 @@
   (let ((tools (list (wolfram-tool))))
     (multiple-value-bind (ans n) (react "用 wolfram 求 x^2-1 的因式分解。" tools :max-steps 3)
       (format t "~A   (调 wolfram ~A 次)~%" ans n))))
+
+;; ── 11b. 多语言 eval:SQL 作为声明式 eval-工具 ─────────────────
+(sec "11b. sql(声明式 eval:关系/查询)"
+  (let* ((seed "create table city(name text, pop int);
+insert into city values ('Tokyo',37),('Delhi',32),('Paris',11),('NewYork',19),('Shanghai',29);")
+         (tools (list (sql-tool :setup seed
+                                :doc "对表 city(name,pop) 跑只读 SELECT,如 (sql \"SELECT name FROM city WHERE pop>20\")"))))
+    (multiple-value-bind (ans n)
+        (react "city 表里人口超过 20(百万)的城市有几个?" tools :max-steps 4)
+      (format t "~A   (调 sql ~A 次)~%" ans n))))
 
 ;; ── 12. settings:全局默认 + 单次覆盖 ──────────────────────────
 (sec "12. settings / with-settings"
