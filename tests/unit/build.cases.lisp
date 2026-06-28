@@ -53,6 +53,15 @@
             "(done (inc 41))")                    ; => 42
    :expect 42)
 
+  ;; a stray TYPE-SIGNATURE pseudo-example ((lst) number) must not poison the spec:
+  ;; it's filtered, the concrete examples remain, the correct impl is accepted (live-found bug).
+  (:name "spec-ignores-type-signature-example"
+   :tools ((mul . (lambda (a b) (* a b))))
+   :script ("(spec sumsq (lst) ((lst) number) ((1 2 3) 14) ((2 3) 13))"
+            "(defun sumsq (lst) (reduce (function +) lst :key (lambda (x) (mul x x)) :initial-value 0))"
+            "(done (sumsq (list 3 4)))")     ; 9+16 = 25
+   :expect 25)
+
   ;; build-agent with NO external tools (pure computation): pkg falls back to :ailisp.
   (:name "no-tools-pure"
    :tools ()

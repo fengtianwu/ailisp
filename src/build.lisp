@@ -15,6 +15,26 @@
 ;;;; agent = REPL, tool-use = eval. One spec serves both directions (stub up, test down).
 (in-package :ailisp)
 
+(defun %literalp (x)
+  "T if X is concrete data a spec can actually test against / return -- NOT a bare symbol
+   like a parameter name or a type name (LST, NUMBER), which models sometimes emit."
+  (typecase x
+    (number t) (string t) (character t)
+    (null t) (keyword t)
+    (symbol (and (eq x t) t))         ; allow T; reject other symbols (param/type names)
+    (cons (and (%literalp (car x)) (%literalp (cdr x))))
+    (t nil)))
+
+(defun %clean-examples (examples)
+  "Keep only well-formed examples (ARGS-LIST EXPECTED) whose inputs AND output are concrete
+   literal data, so a stray type-signature example (e.g. ((lst) number)) can't poison the
+   stub's fallback value or reject a correct implementation during %spec-test."
+  (remove-if-not (lambda (ex)
+                   (and (consp ex) (= (length ex) 2)
+                        (listp (first ex)) (every #'%literalp (first ex))
+                        (%literalp (second ex))))
+                 examples))
+
 (defun %spec-stub (examples)
   "A canned helper built from input->output EXAMPLES (each (ARGS-LIST EXPECTED)).
    Returns the recorded output for matching args, else a type-correct canned value
@@ -31,14 +51,18 @@
   (dolist (ex examples nil)
     (let* ((args (first ex)) (want (second ex))
            (got (handler-case (sb-ext:with-timeout 3 (apply fn args))
-                  (error (e) (return (format nil "(~{~S~^ ~}) errored: ~A"
-                                             args (princ-to-string e)))))))
+                  (error ()
+                    ;; the model may have meant a SINGLE list argument: (f '(1 2 3)), not (f 1 2 3).
+                    (handler-case (sb-ext:with-timeout 3 (funcall fn args))
+                      (error (e) (return (format nil "(~{~S~^ ~}) errored: ~A"
+                                                 args (princ-to-string e)))))))))
       (unless (equal got want)
         (return (format nil "(~{~S~^ ~}) => ~S, expected ~S" args got want))))))
 
 (defun %build-prompt (task tooldocs entries implemented notes)
   (format nil "TASK: ~A~%~%TOOLS (call by name):~%~A~%HELPERS:~%~A~%~AOutput ONE s-expression this turn:~%~
-  (spec name (args) ((in...) out) ...)   declare a helper by examples (installs a testable stub)~%~
+  (spec name (args) ((in...) out) ...)   declare a helper by CONCRETE examples, e.g.~%~
+                                         (spec sq (x) ((3) 9) ((4) 16)) -- real values, never type/param names~%~
   (verify EXPR)                          dry-run EXPR through stubs/impls; checks wiring (no commit)~%~
   (defun name (args) body)               implement a helper (if it has a spec, it must pass its examples)~%~
   (done EXPR)                            the final expression that computes the answer~%~
@@ -112,17 +136,20 @@ You may use +,-,*,/,<,>,if,let,lambda,mapcar,reduce,count-if,remove-if-not,lengt
                  ((and (sym= (car step) "SPEC") (>= (length step) 3))
                   (destructuring-bind (name params &rest examples) (cdr step)
                     (declare (ignore params))
-                    (cond
-                      ((or (member (symbol-name name) *safe-builtins* :test #'string-equal)
-                           (assoc (symbol-name name) *dangerous* :test #'string-equal))
-                       (note "spec ~(~A~) refused (shadows builtin)" name))
-                      (t (push (cons name examples) specs)
-                         (push (cons name (if (fboundp name) (symbol-function name) :unbound)) saved)
-                         (setf (symbol-function name) (%spec-stub examples))
-                         (pushnew name names)
-                         (entry name (third step))
-                         (note "spec'd ~(~A~) (~A example~:p); stub installed"
-                               name (length examples)))))
+                    (let ((examples (%clean-examples examples)))   ; drop type-signature pseudo-examples
+                      (cond
+                        ((or (member (symbol-name name) *safe-builtins* :test #'string-equal)
+                             (assoc (symbol-name name) *dangerous* :test #'string-equal))
+                         (note "spec ~(~A~) refused (shadows builtin)" name))
+                        ((null examples)
+                         (note "spec ~(~A~) ignored: give CONCRETE examples e.g. ((3) 9)" name))
+                        (t (push (cons name examples) specs)
+                           (push (cons name (if (fboundp name) (symbol-function name) :unbound)) saved)
+                           (setf (symbol-function name) (%spec-stub examples))
+                           (pushnew name names)
+                           (entry name (third step))
+                           (note "spec'd ~(~A~) (~A example~:p); stub installed"
+                                 name (length examples))))))
                   nil)
                  ;; (verify EXPR) -- dry-run through stubs/impls; report wiring, don't commit.
                  ((and (sym= (car step) "VERIFY") (>= (length step) 2))

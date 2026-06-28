@@ -18,5 +18,5 @@
                    (make-tool :name 'get_population :fn #'%pop
                               :doc "返回某城市的人口(百万),参数是城市名字符串"))))
   (format t "~&[incremental build: hiai-core]~%")
-  (let ((ans (build-agent "求所有城市人口的平方和。" tools :max-steps 6 :verbose t)))
+  (let ((ans (build-agent "求所有城市人口的平方和。" tools :max-steps 12 :verbose t)))
     (format t "~&~%ANSWER: ~S   (expected 3716)~%" ans)))
