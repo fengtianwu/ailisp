@@ -37,7 +37,7 @@
 | 自一致投票 | 扇出 + 符号归约 | `vote` |
 | ReAct(工具=eval) | 迭代 + 代码模式 b2s | `react` |
 | plan-execute(代码合成) | 一次代码模式 + eval | `bench/compose` |
-| 增量构造 | 迭代进持久工作区 | `build-agent` |
+| 增量构造 + 验证 | 迭代进持久工作区(spec→桩→verify→impl) | `build-agent` |
 | 多 agent | 工具=llm 函数 → **llm 调 llm** | `llm-tool` |
 | 递归分治 | **递归**(深度有界) | `solve` |
 
@@ -72,7 +72,7 @@ react / rag / plan-execute                                        ← agentic �
 
 ## 现状
 
-- **`make test` 85/85**(纯 SBCL,无网络,确定性)。
+- **`make test` 88/88**(纯 SBCL,无网络,确定性)。
 - 实现:`src/`(reader / schema / safe-eval / model / ai / agent / rag / build / patterns / wolfram / skills),`bench/`(BFCL + 组合性基准),`tests/`,`demo.lisp` / `showcase.lisp` / `repl.lisp`。
 - live 路径接 hiai-core 的本地模型(OpenAI 兼容,`:8080`)。
 
@@ -93,11 +93,11 @@ react / rag / plan-execute                                        ← agentic �
 需要 [hiai-core](../hiai-core) 在跑并加载了 chat 模型(代码模型如 qwen-coder-next 最适合 plan-execute)。
 
 ```sh
-make test        # 确定性测试集 85/85(无需模型)
+make test        # 确定性测试集 88/88(无需模型)
 make showcase    # 全套玩法巡演:三原语 / 各 agent 模式 / 多语言 eval(可编辑各段)
 make demo        # 4 个快例:抽取 / 分类 / plan-execute / ReAct
 make repl        # 交互式 ailisp REPL
-make build       # 增量构造 agent(模型自底向上搭 helper)
+make build       # 增量构造 agent(spec→桩 自顶向下验接线,再自底向上搭 helper+验)
 make patterns    # reflect / vote / 多 agent(llm-tool)
 make test-live   # live:自由文本 + schema 化抽取
 make agent       # ReAct agent(tool-use = eval)

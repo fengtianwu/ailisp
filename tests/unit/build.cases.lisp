@@ -32,4 +32,30 @@
    :tools ((mul . (lambda (a b) (* a b))))
    :script ("(defun sneaky (x) (http-get x))"   ; rejected (:network)
             "(done (mul 5 5))")
-   :expect 25))
+   :expect 25)
+
+  ;; spec-stub TOP-DOWN: verify the final wiring through a stub BEFORE implementing,
+  ;; then implement (passes its spec) and finish (bottom-up).
+  (:name "spec-stub-verify-then-implement"
+   :tools ((mul . (lambda (a b) (* a b))))
+   :script ("(spec sq (x) ((3) 9) ((4) 16))"      ; install stub from examples
+            "(verify (+ (sq 3) (sq 4)))"          ; dry-run: stub -> 9+16=25, wiring ok
+            "(defun sq (x) (mul x x))"            ; real impl passes the spec
+            "(done (+ (sq 3) (sq 4)))")           ; => 25
+   :expect 25)
+
+  ;; spec as a UNIT TEST: a wrong impl is rejected (fed back), the fixed one is accepted.
+  (:name "spec-rejects-wrong-impl"
+   :tools ((mul . (lambda (a b) (* a b))))
+   :script ("(spec inc (x) ((1) 2) ((5) 6))"
+            "(defun inc (x) (mul x 2))"            ; inc(1)=2 ok but inc(5)=10 != 6 -> rejected
+            "(defun inc (x) (+ x 1))"             ; correct -> installed
+            "(done (inc 41))")                    ; => 42
+   :expect 42)
+
+  ;; build-agent with NO external tools (pure computation): pkg falls back to :ailisp.
+  (:name "no-tools-pure"
+   :tools ()
+   :script ("(defun tri (n) (if (< n 1) 0 (+ n (tri (- n 1)))))"
+            "(done (tri 5))")                     ; 5+4+3+2+1 = 15
+   :expect 15))
