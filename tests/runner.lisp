@@ -13,7 +13,8 @@
     "tests/unit/bfcl.cases.lisp"
     "tests/unit/build.cases.lisp"
     "tests/unit/intent.cases.lisp"
-    "tests/unit/repel.cases.lisp"))
+    "tests/unit/repel.cases.lisp"
+    "tests/unit/fallback.cases.lisp"))
 
 (defun read-cases-file (path)
   "Return the list of (deftestset NAME case...) forms in PATH, read as data."
@@ -194,6 +195,35 @@
                   (values nil (format nil "repairs ~A != ~A" n (getf c :repairs))))
                  (t (values t nil)))))))))
 
+(defun run-fallback-case (c)
+  "Drive call-with-symbol-fallback with a mock model (scripted defuns). Asserts an undefined
+   call is synthesized + installed + CONTINUE'd, in call order, with no global leak."
+  (let* ((m (ailisp:make-mock-model :responses (getf c :script)))
+         (ailisp:*fallback-descriptions* (getf c :descriptions))
+         (names (getf c :names)))
+    (flet ((no-leak () (or (null names) (notany #'fboundp names))))
+      (handler-case
+          (multiple-value-bind (val built)
+              (ailisp:call-with-symbol-fallback
+                (lambda () (eval (getf c :form)))
+                :model m :tools (getf c :tools)
+                :read-package (find-package :ailisp/tests)
+                :max-synth (or (getf c :max-synth) 5))
+            (ecase (getf c :expect)
+              (:ok (cond ((and (member :value c) (not (equal val (getf c :value))))
+                          (values nil (format nil "value ~S != ~S" val (getf c :value))))
+                         ((and (member :built c)
+                               (not (equal (mapcar #'car built) (getf c :built))))
+                          (values nil (format nil "built ~S != ~S" (mapcar #'car built) (getf c :built))))
+                         ((not (no-leak)) (values nil "a synthesized fn leaked (still fbound)"))
+                         (t (values t nil))))
+              (:error (values nil "expected error but synthesis succeeded"))))
+        (error (e)
+          (cond ((not (eq (getf c :expect) :error))
+                 (values nil (format nil "unexpected error ~A" e)))
+                ((not (no-leak)) (values nil "a synthesized fn leaked after error"))
+                (t (values t nil))))))))
+
 (defun run-params-case (c)
   (let ((p (ailisp:resolve-params :auto :into (getf c :into)
                                         :tools (getf c :tools)
@@ -236,6 +266,7 @@
         ((string-equal testset-name "BUILD")           (run-build-case c))
         ((string-equal testset-name "INTENT")          (run-intent-case c))
         ((string-equal testset-name "REPEL")           (run-repel-case c))
+        ((string-equal testset-name "FALLBACK")        (run-fallback-case c))
         (t (values nil (format nil "unknown testset ~A" testset-name)))))
 
 (defun run-all ()

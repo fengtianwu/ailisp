@@ -59,6 +59,10 @@ intent:
 repel:
 	$(SBCL) --script run-repel.lisp
 
+# Symbolic fallback (DESIGN §7 L3): an undefined fn -> synthesize via LLM -> CONTINUE.
+fallback:
+	$(SBCL) --script run-fallback.lisp
+
 # Full guided tour of all the patterns (edit/comment sections inside).
 showcase:
 	$(SBCL) --script showcase.lisp

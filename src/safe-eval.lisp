@@ -52,6 +52,17 @@
           ((member n *safe-builtins* :test #'string-equal) nil); safe builtin
           (t :unauthorized-symbol))))                          ; everything else
 
+(defun classify-dangerous (op tools)
+  "Like CLASSIFY but ONLY flags *dangerous* ops; unknown symbols are ALLOWED. Used by symbolic
+   fallback, where an unknown call is a future synthesis target (it falls back in turn), not a
+   violation -- so a synthesized body may reference helpers that don't exist yet."
+  (declare (ignore tools))
+  (cdr (assoc (symbol-name op) *dangerous* :test #'string-equal)))
+
+(defvar *classify-fn* 'classify
+  "The operator-classifier WALK-CHECK uses. Default CLASSIFY (strict whitelist). Bind to
+   CLASSIFY-DANGEROUS to allow unknown symbols (symbolic fallback).")
+
 (defun walk-list (forms tools)
   (dolist (f forms nil)
     (let ((r (walk-check f tools))) (when r (return-from walk-list r)))))
@@ -69,7 +80,7 @@
            (or (walk-list (mapcar (lambda (b) (and (consp b) (cadr b))) (cadr form)) tools)
                (walk-list (cddr form) tools))))
         ((symbolp op)
-         (return-from walk-check (or (classify op tools) (walk-list (cdr form) tools))))
+         (return-from walk-check (or (funcall *classify-fn* op tools) (walk-list (cdr form) tools))))
         (t (return-from walk-check (walk-list form tools))))))      ; op is itself a form
   nil)
 

@@ -78,8 +78,8 @@ react / rag / plan-execute                                        ← agentic �
 
 ## 现状
 
-- **`make test` 106/106**(纯 SBCL,无网络,确定性)。
-- 实现:`src/`(reader / schema / safe-eval / repel / model / ai / agent / rag / build / patterns / wolfram / sql / intent / skills),`bench/`(BFCL + 组合性基准),`tests/`,`demo.lisp` / `showcase.lisp` / `repl.lisp`。
+- **`make test` 114/114**(纯 SBCL,无网络,确定性)。
+- 实现:`src/`(reader / schema / safe-eval / repel / fallback / model / ai / agent / rag / build / patterns / wolfram / sql / intent / skills),`bench/`(BFCL + 组合性基准),`tests/`,`demo.lisp` / `showcase.lisp` / `repl.lisp`。
 - live 路径接 hiai-core 的本地模型(OpenAI 兼容,`:8080`)。
 
 ## 实证结论(诚实、跨模型、可复现)
@@ -99,7 +99,7 @@ react / rag / plan-execute                                        ← agentic �
 需要 [hiai-core](../hiai-core) 在跑并加载了 chat 模型(代码模型如 qwen-coder-next 最适合 plan-execute)。
 
 ```sh
-make test        # 确定性测试集 106/106(无需模型)
+make test        # 确定性测试集 114/114(无需模型)
 make showcase    # 全套玩法巡演:三原语 / 各 agent 模式 / 多语言 eval(可编辑各段)
 make demo        # 4 个快例:抽取 / 分类 / plan-execute / ReAct
 make repl        # 交互式 ailisp REPL
@@ -114,6 +114,7 @@ make compose     # plan-execute vs JSON 工具链(多步 + 控制流)
 make sql         # SQL 作为声明式 eval 语言(离线自检 + live react)
 make intent      # intent 宏:展开期 LLM 代码合成,固化到磁盘缓存(跑两次看离线命中)
 make repel       # 自愈:运行时错误→可重启 condition→模型修复(离线自检 + live)
+make fallback    # 符号 fallback:未定义函数→模型按名合成→continue(离线自检 + live)
 ```
 
 小试(`make repl` 里):
@@ -129,9 +130,11 @@ ailisp 与 [Pel](https://arxiv.org/abs/2505.13453)(homoiconic LLM 编排语言)�
 ## 还在路上
 
 - MCP 作为外部 tool 来源(`mcp-lisp`/`40ants-MCP`)
-- 语言层:符号 fallback、NL reader 宏
+- 语言层:NL reader 宏
 - record/replay fixtures 让 live 检查进 CI;更多模型/任务类目
 
 > **已落地**:`intent` 宏(展开期调 LLM 把自然语言**固化**成代码)——`(define-intent fib (n) "第 n 个斐波那契数" :examples (((10) 55)))` 在 macroexpand 时让模型合成函数体、`walk-check` 把关、例子验证后冻结,并**按 intent 文本缓存到磁盘**(首次在线合成,之后纯离线命中,提交缓存即固化整个程序)。`make intent`。
 
 > **已落地**:**条件恢复 / 自愈 REPeL**(柱子 4)——`safe-eval` 把 LLM 代码的运行时错误包成**可重启的 `eval-error`**,带 `retry-with`/`use-value`/`skip` 三个 restart;`repair-eval` 是原语(safe-eval + 自愈处理器),`repel` 是把回路接给模型的 REPL(看到确切 CL 错误→给修复→重跑,中间状态不丢)。修复的新代码会**重新过 `walk-check`**(自愈不破坏安全边界)。`make repel`。
+
+> **已落地**:**符号 fallback**(条件恢复同源,DESIGN §7 L3)——调用**未定义函数**不报死,`undefined-function` 的 handler 让模型**按函数名(可选 examples)合成**函数体、`walk-check`(只禁 `*dangerous*`,允许未知名以便递归 fallback)、装上、`invoke continue` 重试;合成体里再调别的未定义 helper 会**递归自顶向下物化**(`sumsq`→`sq`),退出后自动解绑、绝不合成危险名。= `intent` 的合成被**运行时缺失符号反应式触发**(`intent` 是展开期主动固化)。`make fallback`。

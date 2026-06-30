@@ -30,6 +30,8 @@
    #:wolfram-eval #:wolfram-tool #:%wolfram-result
    #:sql-eval #:sql-tool #:%sql-guard
    #:intent #:define-intent #:synth-fn-form #:intent-expand
+   ;; symbolic fallback (DESIGN §7 L3): synthesize an undefined fn on demand
+   #:*fallback-descriptions* #:synth-missing-fn #:call-with-symbol-fallback #:with-symbol-fallback
    ;; bench (M7)
    #:*last-usage* #:*bench-tasks* #:run-bench #:run-task
    #:parse-call-sexpr #:parse-call-json #:grade-call #:arg=

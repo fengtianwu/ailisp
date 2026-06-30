@@ -7,7 +7,7 @@
 (let ((root (or *load-pathname* *default-pathname-defaults*)))
   (dolist (f '("src/package" "src/reader" "src/schema" "src/model" "src/skills"
                "src/ai" "src/safe-eval" "src/repel" "src/agent" "src/rag" "src/build" "src/patterns"
-               "src/wolfram" "src/sql"))
+               "src/wolfram" "src/sql" "src/intent" "src/fallback"))
     (handler-bind ((warning #'muffle-warning))
       (load (merge-pathnames (concatenate 'string f ".lisp") root)))))
 (in-package :ailisp)
@@ -27,6 +27,7 @@
 (format t "    §11    Wolfram(符号数学)  ·  §11b SQL(声明式查询,★本轮新增第三门语言)~%")
 (format t "    §12    settings:全局默认 + with-settings 单次覆盖~%")
 (format t "    §13    repel(自愈:运行时错误→可重启 condition→模型修复,★本轮新增)~%")
+(format t "    §14    符号 fallback(未定义函数→模型按名合成→continue,★本轮新增)~%")
 (format t "    旁注   intent 宏 = 展开期把自然语言固化成代码(见 make intent,不在本巡演内)~%")
 (format t "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━~%")
 
@@ -137,5 +138,14 @@ insert into city values ('Tokyo',37),('Delhi',32),('Paris',11),('NewYork',19),('
     (multiple-value-bind (result repairs)
         (repel "苹果加梨的总价是多少?用 fetch 工具(参数是字符串商品名)。" tools :max-repairs 3 :verbose t)
       (format t "RESULT = ~S   (自愈 ~A 次;期望 8)~%" result repairs))))
+
+;; ── 14. 符号 fallback:未定义函数 → 模型按名合成 → continue(DESIGN §7 L3) ──
+(sec "14. 符号 fallback(未定义函数自动合成)"
+  ;; celsius->fahrenheit 从没定义;调用它触发 undefined-function,handler 让模型按名合成
+  ;; 函数体(walk-check 过关)、装上、invoke continue 重试。合成的函数退出后自动解绑。
+  (let ((result
+          (with-symbol-fallback (:read-package (find-package :ailisp) :verbose t)
+            (eval '(list (celsius->fahrenheit 100) (celsius->fahrenheit 0))))))
+    (format t "RESULT = ~S   (期望 (212 32))~%" result)))
 
 (format t "~&~%(改 showcase.lisp 各段的提示词再跑;或注释掉不想跑的段。)~%")

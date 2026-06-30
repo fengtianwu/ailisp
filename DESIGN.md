@@ -250,6 +250,13 @@ s-表达式调用,在**能力受限的环境**里求值(§6):
     老调用方(react/build)零影响。`repair-eval` = 原语(safe-eval + 自愈处理器,分离信号/策略/恢复手段);`repel`
     = 把回路接给模型的 REPL(确切 CL 错误 → 模型修复 → retry-with 重跑)。9 个确定性单测 + `make repel` live。
 - **L3 符号 fallback 也走条件系统**:为 `undefined-function` 挂 handler,提供"问 LLM"的 restart。
+  - **已落地(`src/fallback.lisp`):** `call-with-symbol-fallback` / `with-symbol-fallback` 给 `undefined-function`
+    挂 handler:取 `cell-error-name` → `synth-missing-fn` 让模型**按名(可选 registry examples)合成 `(defun …)`**
+    → body 过 `walk-check`(`*classify-fn*` 绑到 `classify-dangerous`:只禁 `*dangerous*`,放行未知名,这样合成体
+    可引用尚未定义的 helper)→ `(setf (fdefinition name) …)` → `invoke-restart 'continue` 重试。未知 helper 会
+    **递归物化**(`sumsq`→`sq`);`*dangerous*` 名拒绝合成(回落正常报错);合成的 fn 退出时经 saved-alist 解绑,
+    无全局污染;`max-synth` 封顶。= `intent` 合成的**反应式运行时版**(intent 是 macroexpand 主动固化)。8 条
+    确定性单测,`make fallback` live(模型从名字合成 `celsius->fahrenheit` ⇒ (212 32))。
 - **AST 依赖图自动并行**:无依赖的顶层定义并发执行(不可变 ⇒ 依赖分析干净)。
 
 ---
