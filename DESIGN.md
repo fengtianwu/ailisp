@@ -258,6 +258,11 @@ s-表达式调用,在**能力受限的环境**里求值(§6):
     无全局污染;`max-synth` 封顶。= `intent` 合成的**反应式运行时版**(intent 是 macroexpand 主动固化)。8 条
     确定性单测,`make fallback` live(模型从名字合成 `celsius->fahrenheit` ⇒ (212 32))。
 - **AST 依赖图自动并行**:无依赖的顶层定义并发执行(不可变 ⇒ 依赖分析干净)。
+  - **已落地(`src/parallel.lisp`):** `defun-deps` walk 一批 defun 的 AST 取调用关系 → `dep-layers` 拓扑分层
+    (Kahn,环检测)→ `run-graph` 每层独立节点经 `sb-thread` 并发、层间顺序(后层可见前层副作用)。值得并行的
+    成本是 LLM 调用 → 落点 `synth-graph`:互不依赖的 helper **同层并发合成**(往返重叠),依赖者排到下一层、其 deps
+    先装好以便例子验证。7 条确定性单测(含 parallel==sequential 等价);`make parallel` live:第一层 3 个合成并发,
+    墙钟 ~2600ms → ~1345ms。
 
 ---
 

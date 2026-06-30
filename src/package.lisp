@@ -32,6 +32,8 @@
    #:intent #:define-intent #:synth-fn-form #:intent-expand
    ;; symbolic fallback (DESIGN §7 L3): synthesize an undefined fn on demand
    #:*fallback-descriptions* #:synth-missing-fn #:call-with-symbol-fallback #:with-symbol-fallback
+   ;; AST dependency-graph auto-parallel: layer independent defuns, synthesize concurrently
+   #:defun-deps #:dep-layers #:defun-layers #:run-graph #:synth-graph
    ;; bench (M7)
    #:*last-usage* #:*bench-tasks* #:run-bench #:run-task
    #:parse-call-sexpr #:parse-call-json #:grade-call #:arg=

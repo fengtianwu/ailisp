@@ -7,7 +7,7 @@
 (let ((root (or *load-pathname* *default-pathname-defaults*)))
   (dolist (f '("src/package" "src/reader" "src/schema" "src/model" "src/skills"
                "src/ai" "src/safe-eval" "src/repel" "src/agent" "src/rag" "src/build" "src/patterns"
-               "src/wolfram" "src/sql" "src/intent" "src/fallback"))
+               "src/wolfram" "src/sql" "src/intent" "src/fallback" "src/parallel"))
     (handler-bind ((warning #'muffle-warning))
       (load (merge-pathnames (concatenate 'string f ".lisp") root)))))
 (in-package :ailisp)
@@ -28,6 +28,7 @@
 (format t "    §12    settings:全局默认 + with-settings 单次覆盖~%")
 (format t "    §13    repel(自愈:运行时错误→可重启 condition→模型修复,★本轮新增)~%")
 (format t "    §14    符号 fallback(未定义函数→模型按名合成→continue,★本轮新增)~%")
+(format t "    §15    auto-parallel(AST 依赖图分层,独立 helper 并发合成,★本轮新增)~%")
 (format t "    旁注   intent 宏 = 展开期把自然语言固化成代码(见 make intent,不在本巡演内)~%")
 (format t "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━~%")
 
@@ -147,5 +148,20 @@ insert into city values ('Tokyo',37),('Delhi',32),('Paris',11),('NewYork',19),('
           (with-symbol-fallback (:read-package (find-package :ailisp) :verbose t)
             (eval '(list (celsius->fahrenheit 100) (celsius->fahrenheit 0))))))
     (format t "RESULT = ~S   (期望 (212 32))~%" result)))
+
+;; ── 15. AST 依赖图自动并行:独立 helper 并发合成(DESIGN §7) ──
+(sec "15. auto-parallel(依赖图分层 + 并发合成)"
+  ;; sq/cube/neg 互不依赖 -> 同一层并发合成(3 个 LLM 调用重叠);combo 依赖三者 -> 下一层。
+  (let ((specs '((sq    (x) "the square of x"          :examples (((3) 9)))
+                 (cube  (x) "the cube of x"            :examples (((2) 8)))
+                 (neg   (x) "the negation of x"        :examples (((5) -5)))
+                 (combo (x) "sq(x) + cube(x) + neg(x)" :deps (sq cube neg) :examples (((2) 10))))))
+    (let ((start (get-internal-real-time)))
+      (multiple-value-bind (results layers) (synth-graph specs :parallel t :verbose t)
+        (declare (ignore results))
+        (format t "层结构: ~S~%(combo 2) = ~S   (期望 10;第一层 3 个合成并发,墙钟 ~Dms)~%"
+                layers (ignore-errors (combo 2))
+                (round (* 1000 (/ (- (get-internal-real-time) start)
+                                  internal-time-units-per-second))))))))
 
 (format t "~&~%(改 showcase.lisp 各段的提示词再跑;或注释掉不想跑的段。)~%")

@@ -14,7 +14,8 @@
     "tests/unit/build.cases.lisp"
     "tests/unit/intent.cases.lisp"
     "tests/unit/repel.cases.lisp"
-    "tests/unit/fallback.cases.lisp"))
+    "tests/unit/fallback.cases.lisp"
+    "tests/unit/parallel.cases.lisp"))
 
 (defun read-cases-file (path)
   "Return the list of (deftestset NAME case...) forms in PATH, read as data."
@@ -224,6 +225,31 @@
                 ((not (no-leak)) (values nil "a synthesized fn leaked after error"))
                 (t (values t nil))))))))
 
+(defun run-parallel-case (c)
+  "Assert the pure dependency machinery + the layer executor's parallel==sequential property."
+  (cond
+    ((member :forms c)                                    ; layers inferred from defun ASTs
+     (let ((got (ailisp:defun-layers (getf c :forms))))
+       (if (equal got (getf c :expect-layers)) (values t nil)
+           (values nil (format nil "layers ~S != ~S" got (getf c :expect-layers))))))
+    ((eq (getf c :expect) :cycle)
+     (handler-case (progn (ailisp:dep-layers (getf c :names) (getf c :deps))
+                          (values nil "expected a cycle error"))
+       (error () (values t nil))))
+    ((member :expect-layers c)                            ; explicit names/deps layering
+     (let ((got (ailisp:dep-layers (getf c :names) (getf c :deps))))
+       (if (equal got (getf c :expect-layers)) (values t nil)
+           (values nil (format nil "layers ~S != ~S" got (getf c :expect-layers))))))
+    (t                                                    ; run-graph: parallel must equal sequential
+     (flet ((work (n) (list :did n)))                     ; pure, deterministic
+       (let ((seq (mapcar #'car (ailisp:run-graph (getf c :names) (getf c :deps) #'work :parallel nil)))
+             (par (mapcar #'car (ailisp:run-graph (getf c :names) (getf c :deps) #'work :parallel t))))
+         (cond ((not (equal seq par))
+                (values nil (format nil "parallel ~S != sequential ~S" par seq)))
+               ((and (member :expect-order c) (not (equal seq (getf c :expect-order))))
+                (values nil (format nil "order ~S != ~S" seq (getf c :expect-order))))
+               (t (values t nil))))))))
+
 (defun run-params-case (c)
   (let ((p (ailisp:resolve-params :auto :into (getf c :into)
                                         :tools (getf c :tools)
@@ -267,6 +293,7 @@
         ((string-equal testset-name "INTENT")          (run-intent-case c))
         ((string-equal testset-name "REPEL")           (run-repel-case c))
         ((string-equal testset-name "FALLBACK")        (run-fallback-case c))
+        ((string-equal testset-name "PARALLEL")        (run-parallel-case c))
         (t (values nil (format nil "unknown testset ~A" testset-name)))))
 
 (defun run-all ()

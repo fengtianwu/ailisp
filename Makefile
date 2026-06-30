@@ -63,6 +63,10 @@ repel:
 fallback:
 	$(SBCL) --script run-fallback.lisp
 
+# AST dependency-graph auto-parallel: layer helpers, synthesize independent ones concurrently.
+parallel:
+	$(SBCL) --script run-parallel.lisp
+
 # Full guided tour of all the patterns (edit/comment sections inside).
 showcase:
 	$(SBCL) --script showcase.lisp
