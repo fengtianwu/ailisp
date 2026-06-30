@@ -78,8 +78,8 @@ react / rag / plan-execute                                        ← agentic �
 
 ## 现状
 
-- **`make test` 131/131**(纯 SBCL,无网络,确定性);**`make ci`** = `test` + `replay`(录制的 live agent 流离线复现,全程无网络)。
-- 实现:`src/`(reader / schema / safe-eval / repel / fallback / parallel / nl / replay / model / ai / agent / rag / build / patterns / wolfram / sql / intent / skills),`bench/`(BFCL + 组合性基准),`tests/`(含 `fixtures/`),`demo.lisp` / `showcase.lisp` / `repl.lisp`。
+- **`make test` 137/137**(纯 SBCL,无网络,确定性);**`make ci`** = `test` + `replay`(录制的 live agent 流离线复现,全程无网络)。
+- 实现:`src/`(reader / schema / safe-eval / repel / fallback / parallel / nl / replay / mcp / model / ai / agent / rag / build / patterns / wolfram / sql / intent / skills),`bench/`(BFCL + 组合性基准),`tests/`(含 `fixtures/`),`examples/`(MCP 示例 server),`demo.lisp` / `showcase.lisp` / `repl.lisp`。
 - live 路径接 hiai-core 的本地模型(OpenAI 兼容,`:8080`)。
 
 ## 实证结论(诚实、跨模型、可复现)
@@ -99,7 +99,7 @@ react / rag / plan-execute                                        ← agentic �
 需要 [hiai-core](../hiai-core) 在跑并加载了 chat 模型(代码模型如 qwen-coder-next 最适合 plan-execute)。
 
 ```sh
-make test        # 确定性测试集 131/131(无需模型)
+make test        # 确定性测试集 137/137(无需模型)
 make ci          # 离线 CI 闸:test + replay(录制的 live agent 流离线复现,无网络)
 make showcase    # 全套玩法巡演:三原语 / 各 agent 模式 / 多语言 eval(可编辑各段)
 make demo        # 4 个快例:抽取 / 分类 / plan-execute / ReAct
@@ -120,6 +120,7 @@ make parallel    # AST 依赖图分层 + 独立 helper 并发合成(离线自检
 make nl          # NL reader 宏:#L"自然语言"→读期合成代码并固化(离线自检 + live)
 make record      # 录制 live agent 流(react/build/solve)的 chat fixtures(需 hiai-core)
 make replay      # 离线复现录制的 live 流并断言一致(CI 用,无需模型)
+make mcp         # MCP 外部 tool 源:连 stdio MCP server→工具包成 ailisp tool→react(离线自检 + live)
 ```
 
 小试(`make repl` 里):
@@ -134,8 +135,7 @@ ailisp 与 [Pel](https://arxiv.org/abs/2505.13453)(homoiconic LLM 编排语言)�
 
 ## 还在路上
 
-- MCP 作为外部 tool 来源(`mcp-lisp`/`40ants-MCP`)
-- 更多模型/任务类目
+- 更多模型/任务类目;MCP 的 HTTP/SSE 传输(目前是 stdio)、更复杂的内容类型
 
 > **已落地**:`intent` 宏(展开期调 LLM 把自然语言**固化**成代码)——`(define-intent fib (n) "第 n 个斐波那契数" :examples (((10) 55)))` 在 macroexpand 时让模型合成函数体、`walk-check` 把关、例子验证后冻结,并**按 intent 文本缓存到磁盘**(首次在线合成,之后纯离线命中,提交缓存即固化整个程序)。`make intent`。
 
@@ -148,3 +148,5 @@ ailisp 与 [Pel](https://arxiv.org/abs/2505.13453)(homoiconic LLM 编排语言)�
 > **已落地**:**NL reader 宏 `#L`**(DESIGN §4/L4,最细粒度的"lower↓")——把自然语言直接写进代码,**读期**由模型译成一条 Lisp 表达式、`walk-check` 把关(危险算子拒绝、绝不拼接)、再固化进缓存。`(* 100 #L"the number of days in a non-leap year")` 在 read 时变成 `(* 100 365)` → 36500;同一段 `#L` 再读是纯离线缓存命中。= `intent` 下沉到 reader(intent 是 s-表达式语法上的宏,`#L` 让你连括号都不用写)。`make nl`。
 
 > **已落地**:**record/replay 让 live 流进 CI**——模型边界 `chat` 是 agent 流唯一碰模型的地方,所以在那里拦截:`record-model` 包住真模型、把每次 (请求→响应) 录进 `tests/fixtures/`;`replay-model` 离线回放,**无网络**。fixture **按请求(messages+params)为键**,所以回放与调用顺序无关、能复现重试/重复(同键→录制的多条响应按序回放)。已录 react/build/solve 三条真 live 流,`make replay` 离线逐字复现其结果(react 一句话、build 平方和=1794、solve 一句话);`make ci` = `test` + `replay` 全离线。这是 `intent` 缓存的通用化版。`make record`(需 hiai-core)。
+
+> **已落地**:**MCP 作为外部 tool 源**——MCP 不是工具,是**从外部服务器取工具的协议**,所以是个**适配器**:`mcp-connect` 起一个 stdio MCP server 子进程(newline-delimited JSON-RPC 2.0,initialize 握手)→ `tools/list` → 每个工具的 `inputSchema` 取有序参数名 → 包成 ailisp `tool`(位置实参 zip 成 MCP 命名实参,经 `tools/call` 调)→ **react/build/plan-execute 照常用**(tool-use=eval 不变)。仓库内 `examples/mcp-add-server.lisp` 是个零依赖示例 server,`make mcp` 离线自检(真子进程 JSON-RPC 往返:`add(40,2)`=42)+ live(模型经 MCP 工具 react → 42)。6 条确定性单测(参数序/实参映射/结果抽取/包装)。`make mcp`。

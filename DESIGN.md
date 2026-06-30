@@ -190,6 +190,12 @@ s-表达式调用,在**能力受限的环境**里求值(§6):
 - **skill** = 更高层的可复用能力束(系统提示词 + 一组 tools + few-shot 示例 + 默认 schema),
   本质也是个值,可被 `:skills` 引入或单独当函数调。
 - 工具/技能集是**按调用范围授权**的:不在 `:tools` 里的能力,模型既看不到也(经 §6 能力系统)调不到。
+- **工具来源是可插拔的**(一个 tool 只是带 name/doc/fn 的值):本地 ailisp 闭包、hiai-core 的 HTTP 端点
+  (`/web/search`、`/wolfram`)、以及 **MCP 外部服务器**。**已落地(`src/mcp.lisp`):** MCP 不是工具,是
+  *取工具的协议*;`mcp-connect` 起 stdio MCP server(JSON-RPC 2.0,initialize 握手)→ `tools/list` → 每个工具
+  的 `inputSchema` 取有序参数名 → 包成 ailisp `tool`(位置实参 zip 成命名实参,经 `tools/call` 调)→ react/build/
+  plan-execute 照常用。`examples/mcp-add-server.lisp` 零依赖示例,6 条确定性单测 + `make mcp` live(stdio 子进程
+  JSON-RPC 往返,模型经 MCP 工具求解 → 42)。目前 stdio 传输;HTTP/SSE 待加。
 
 ---
 

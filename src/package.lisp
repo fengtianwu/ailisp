@@ -40,6 +40,8 @@
    #:record-model #:make-record-model #:record-model-fixtures #:record-model-inner
    #:replay-model #:make-replay-from-fixtures #:replay-model-from-file #:replay-model-misses
    #:write-fixtures #:read-fixture-file #:%request-key
+   ;; MCP as an external tool source: connect a server, wrap its tools as ailisp tools
+   #:mcp-connect #:mcp-close #:mcp-list-tools #:mcp-call #:mcp-tool #:mcp-tools #:mcp-p
    ;; bench (M7)
    #:*last-usage* #:*bench-tasks* #:run-bench #:run-task
    #:parse-call-sexpr #:parse-call-json #:grade-call #:arg=

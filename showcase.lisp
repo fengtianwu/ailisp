@@ -7,7 +7,7 @@
 (let ((root (or *load-pathname* *default-pathname-defaults*)))
   (dolist (f '("src/package" "src/reader" "src/schema" "src/model" "src/skills"
                "src/ai" "src/safe-eval" "src/repel" "src/agent" "src/rag" "src/build" "src/patterns"
-               "src/wolfram" "src/sql" "src/intent" "src/fallback" "src/parallel" "src/nl"))
+               "src/wolfram" "src/sql" "src/intent" "src/fallback" "src/parallel" "src/nl" "src/mcp"))
     (handler-bind ((warning #'muffle-warning))
       (load (merge-pathnames (concatenate 'string f ".lisp") root)))))
 (in-package :ailisp)
@@ -30,6 +30,7 @@
 (format t "    §14    符号 fallback(未定义函数→模型按名合成→continue,★本轮新增)~%")
 (format t "    §15    auto-parallel(AST 依赖图分层,独立 helper 并发合成,★本轮新增)~%")
 (format t "    §16    NL reader 宏(#L\"自然语言\"→读期合成代码并固化,★本轮新增)~%")
+(format t "    §17    MCP 外部 tool 源(连 MCP server→工具包成 ailisp tool→react,★本轮新增)~%")
 (format t "    旁注   intent 宏 = 展开期把自然语言固化成代码(见 make intent,不在本巡演内)~%")
 (format t "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━~%")
 
@@ -173,5 +174,19 @@ insert into city values ('Tokyo',37),('Delhi',32),('Paris',11),('NewYork',19),('
     (let ((form (read-from-string "(* 100 #L\"the number of days in a non-leap year\")")))
       (format t "读到的代码: ~S~%求值 => ~S   (期望 36500;#L 在读期被模型合成成 365 并固化进缓存)~%"
               form (ignore-errors (eval form))))))
+
+;; ── 17. MCP 外部 tool 源:连 MCP server,把它的工具当 ailisp tool 用 ──
+;; MCP 不是工具,是"工具来源协议"。连上一个 stdio MCP server(这里用仓库内的示例
+;; server,无外部依赖)→ tools/list → 每个工具包成 ailisp tool → react 照常用。
+(sec "17. MCP 外部 tool 源(连服务器,工具即 ailisp tool)"
+  (let* ((server (namestring (merge-pathnames "examples/mcp-add-server.lisp"
+                                              (or *load-pathname* *default-pathname-defaults*))))
+         (conn (mcp-connect "sbcl" "--script" server)))
+    (unwind-protect
+         (let ((tools (mcp-tools conn)))
+           (format t "MCP 暴露的工具: ~S~%" (mapcar #'tool-name tools))
+           (multiple-value-bind (ans n) (react "用 add 工具算 40 加 2,只回答数字。" tools :max-steps 4)
+             (format t "react 经 MCP 工具求解 => ~S   (调用 ~A 次;期望 42)~%" ans n)))
+      (mcp-close conn))))
 
 (format t "~&~%(改 showcase.lisp 各段的提示词再跑;或注释掉不想跑的段。)~%")

@@ -17,7 +17,8 @@
     "tests/unit/fallback.cases.lisp"
     "tests/unit/parallel.cases.lisp"
     "tests/unit/nl.cases.lisp"
-    "tests/unit/replay.cases.lisp"))
+    "tests/unit/replay.cases.lisp"
+    "tests/unit/mcp.cases.lisp"))
 
 (defun read-cases-file (path)
   "Return the list of (deftestset NAME case...) forms in PATH, read as data."
@@ -252,6 +253,30 @@
                 (values nil (format nil "order ~S != ~S" seq (getf c :expect-order))))
                (t (values t nil))))))))
 
+(defun run-mcp-case (c)
+  "Assert the pure MCP adapter logic (param-name order / positional->named args / result-text
+   extraction / spec->tool wrapping) on canned JSON-RPC payloads -- no subprocess."
+  (ecase (getf c :kind)
+    (:param-names
+     (let ((got (ailisp::%mcp-param-names (first (ailisp:json-decode (getf c :json))))))
+       (if (equal got (getf c :expect)) (values t nil)
+           (values nil (format nil "param-names ~S != ~S" got (getf c :expect))))))
+    (:args
+     (let ((got (ailisp::%mcp-args (getf c :params) (getf c :positional))))
+       (if (equal got (getf c :expect)) (values t nil)
+           (values nil (format nil "args ~S != ~S" got (getf c :expect))))))
+    (:result
+     (let ((got (ailisp::%mcp-result-value (ailisp:json-decode (getf c :json)))))
+       (if (equal got (getf c :expect)) (values t nil)
+           (values nil (format nil "result ~S != ~S" got (getf c :expect))))))
+    (:wrap
+     (let ((tool (ailisp::mcp-tool nil (first (ailisp:json-decode (getf c :json))))))
+       (cond ((not (string-equal (symbol-name (ailisp:tool-name tool)) (getf c :expect-name)))
+              (values nil (format nil "name ~A != ~A" (symbol-name (ailisp:tool-name tool)) (getf c :expect-name))))
+             ((not (equal (ailisp:tool-doc tool) (getf c :expect-doc)))
+              (values nil (format nil "doc ~S != ~S" (ailisp:tool-doc tool) (getf c :expect-doc))))
+             (t (values t nil)))))))
+
 (defun run-replay-case (c)
   "Record a react flow (mock inner), then replay it from the captured request->response fixtures
    and assert it reproduces the answer with zero fixture misses. :drop t asserts a dropped
@@ -334,6 +359,7 @@
         ((string-equal testset-name "PARALLEL")        (run-parallel-case c))
         ((string-equal testset-name "NL")              (run-nl-case c))
         ((string-equal testset-name "REPLAY")          (run-replay-case c))
+        ((string-equal testset-name "MCP")             (run-mcp-case c))
         (t (values nil (format nil "unknown testset ~A" testset-name)))))
 
 (defun run-all ()

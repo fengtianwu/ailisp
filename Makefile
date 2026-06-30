@@ -25,7 +25,7 @@ bench:
 bfcl:
 	$(SBCL) --script run-bfcl.lisp $(N)
 
-.PHONY: test test-live bench record replay ci nl repel fallback parallel sql intent
+.PHONY: test test-live bench record replay ci nl repel fallback parallel sql intent mcp
 
 # Composability bench: plan-execute (1 s-expr program) vs JSON tool-chaining.
 compose:
@@ -78,6 +78,10 @@ record:
 # Replay the recorded flows OFFLINE and assert each reproduces (CI-able; no model).
 replay:
 	$(SBCL) --script run-replay.lisp
+
+# MCP as an external tool source: connect a stdio server, wrap its tools, use via react.
+mcp:
+	$(SBCL) --script run-mcp.lisp
 
 # The full offline gate for CI: deterministic suite + replayed live flows. No network.
 ci: test replay
