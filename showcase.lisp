@@ -7,7 +7,7 @@
 (let ((root (or *load-pathname* *default-pathname-defaults*)))
   (dolist (f '("src/package" "src/reader" "src/schema" "src/model" "src/skills"
                "src/ai" "src/safe-eval" "src/repel" "src/agent" "src/rag" "src/build" "src/patterns"
-               "src/wolfram" "src/sql" "src/intent" "src/fallback" "src/parallel"))
+               "src/wolfram" "src/sql" "src/intent" "src/fallback" "src/parallel" "src/nl"))
     (handler-bind ((warning #'muffle-warning))
       (load (merge-pathnames (concatenate 'string f ".lisp") root)))))
 (in-package :ailisp)
@@ -29,6 +29,7 @@
 (format t "    §13    repel(自愈:运行时错误→可重启 condition→模型修复,★本轮新增)~%")
 (format t "    §14    符号 fallback(未定义函数→模型按名合成→continue,★本轮新增)~%")
 (format t "    §15    auto-parallel(AST 依赖图分层,独立 helper 并发合成,★本轮新增)~%")
+(format t "    §16    NL reader 宏(#L\"自然语言\"→读期合成代码并固化,★本轮新增)~%")
 (format t "    旁注   intent 宏 = 展开期把自然语言固化成代码(见 make intent,不在本巡演内)~%")
 (format t "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━~%")
 
@@ -163,5 +164,14 @@ insert into city values ('Tokyo',37),('Delhi',32),('Paris',11),('NewYork',19),('
                 layers (ignore-errors (combo 2))
                 (round (* 1000 (/ (- (get-internal-real-time) start)
                                   internal-time-units-per-second))))))))
+
+;; ── 16. NL reader 宏:#L"自然语言" 在读期合成代码(DESIGN §4 / L4) ──
+;; 注意:本文件用默认 readtable 读,#L 只在 ailisp readtable 生效,所以这里用
+;; read-from-string + ailisp readtable 显式演示(也证明 #L 能和普通表达式组合)。
+(sec "16. NL reader 宏(#L:自然语言即代码)"
+  (let ((*readtable* *ailisp-readtable*))
+    (let ((form (read-from-string "(* 100 #L\"the number of days in a non-leap year\")")))
+      (format t "读到的代码: ~S~%求值 => ~S   (期望 36500;#L 在读期被模型合成成 365 并固化进缓存)~%"
+              form (ignore-errors (eval form))))))
 
 (format t "~&~%(改 showcase.lisp 各段的提示词再跑;或注释掉不想跑的段。)~%")

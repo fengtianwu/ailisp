@@ -15,7 +15,8 @@
     "tests/unit/intent.cases.lisp"
     "tests/unit/repel.cases.lisp"
     "tests/unit/fallback.cases.lisp"
-    "tests/unit/parallel.cases.lisp"))
+    "tests/unit/parallel.cases.lisp"
+    "tests/unit/nl.cases.lisp"))
 
 (defun read-cases-file (path)
   "Return the list of (deftestset NAME case...) forms in PATH, read as data."
@@ -250,6 +251,19 @@
                 (values nil (format nil "order ~S != ~S" seq (getf c :expect-order))))
                (t (values t nil))))))))
 
+(defun run-nl-case (c)
+  "Drive synth-nl-form with a mock model (scripted candidate expressions). Deterministic: asserts
+   the read-time NL synthesizer parses / safety-walks / retries, yielding the expected form."
+  (let* ((m (ailisp:make-mock-model :responses (getf c :script)))
+         (form (ailisp:synth-nl-form (getf c :text) :model m :tools (getf c :tools)
+                                     :read-package (find-package :ailisp/tests) :max-tries 4)))
+    (ecase (getf c :expect)
+      (:ok (cond ((null form) (values nil "expected a form, got nil"))
+                 ((not (equal form (getf c :form)))
+                  (values nil (format nil "form ~S != ~S" form (getf c :form))))
+                 (t (values t nil))))
+      (:fail (if form (values nil (format nil "expected failure, got ~S" form)) (values t nil))))))
+
 (defun run-params-case (c)
   (let ((p (ailisp:resolve-params :auto :into (getf c :into)
                                         :tools (getf c :tools)
@@ -294,6 +308,7 @@
         ((string-equal testset-name "REPEL")           (run-repel-case c))
         ((string-equal testset-name "FALLBACK")        (run-fallback-case c))
         ((string-equal testset-name "PARALLEL")        (run-parallel-case c))
+        ((string-equal testset-name "NL")              (run-nl-case c))
         (t (values nil (format nil "unknown testset ~A" testset-name)))))
 
 (defun run-all ()

@@ -67,6 +67,10 @@ fallback:
 parallel:
 	$(SBCL) --script run-parallel.lisp
 
+# NL reader macro: #L"natural language" -> a Lisp form synthesized at read time, cached.
+nl:
+	$(SBCL) --script run-nl.lisp
+
 # Full guided tour of all the patterns (edit/comment sections inside).
 showcase:
 	$(SBCL) --script showcase.lisp

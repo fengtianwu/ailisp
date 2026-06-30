@@ -78,8 +78,8 @@ react / rag / plan-execute                                        ← agentic �
 
 ## 现状
 
-- **`make test` 121/121**(纯 SBCL,无网络,确定性)。
-- 实现:`src/`(reader / schema / safe-eval / repel / fallback / parallel / model / ai / agent / rag / build / patterns / wolfram / sql / intent / skills),`bench/`(BFCL + 组合性基准),`tests/`,`demo.lisp` / `showcase.lisp` / `repl.lisp`。
+- **`make test` 127/127**(纯 SBCL,无网络,确定性)。
+- 实现:`src/`(reader / schema / safe-eval / repel / fallback / parallel / nl / model / ai / agent / rag / build / patterns / wolfram / sql / intent / skills),`bench/`(BFCL + 组合性基准),`tests/`,`demo.lisp` / `showcase.lisp` / `repl.lisp`。
 - live 路径接 hiai-core 的本地模型(OpenAI 兼容,`:8080`)。
 
 ## 实证结论(诚实、跨模型、可复现)
@@ -99,7 +99,7 @@ react / rag / plan-execute                                        ← agentic �
 需要 [hiai-core](../hiai-core) 在跑并加载了 chat 模型(代码模型如 qwen-coder-next 最适合 plan-execute)。
 
 ```sh
-make test        # 确定性测试集 121/121(无需模型)
+make test        # 确定性测试集 127/127(无需模型)
 make showcase    # 全套玩法巡演:三原语 / 各 agent 模式 / 多语言 eval(可编辑各段)
 make demo        # 4 个快例:抽取 / 分类 / plan-execute / ReAct
 make repl        # 交互式 ailisp REPL
@@ -116,6 +116,7 @@ make intent      # intent 宏:展开期 LLM 代码合成,固化到磁盘缓存(�
 make repel       # 自愈:运行时错误→可重启 condition→模型修复(离线自检 + live)
 make fallback    # 符号 fallback:未定义函数→模型按名合成→continue(离线自检 + live)
 make parallel    # AST 依赖图分层 + 独立 helper 并发合成(离线自检 + live 看墙钟加速)
+make nl          # NL reader 宏:#L"自然语言"→读期合成代码并固化(离线自检 + live)
 ```
 
 小试(`make repl` 里):
@@ -131,7 +132,6 @@ ailisp 与 [Pel](https://arxiv.org/abs/2505.13453)(homoiconic LLM 编排语言)�
 ## 还在路上
 
 - MCP 作为外部 tool 来源(`mcp-lisp`/`40ants-MCP`)
-- 语言层:NL reader 宏
 - record/replay fixtures 让 live 检查进 CI;更多模型/任务类目
 
 > **已落地**:`intent` 宏(展开期调 LLM 把自然语言**固化**成代码)——`(define-intent fib (n) "第 n 个斐波那契数" :examples (((10) 55)))` 在 macroexpand 时让模型合成函数体、`walk-check` 把关、例子验证后冻结,并**按 intent 文本缓存到磁盘**(首次在线合成,之后纯离线命中,提交缓存即固化整个程序)。`make intent`。
@@ -141,3 +141,5 @@ ailisp 与 [Pel](https://arxiv.org/abs/2505.13453)(homoiconic LLM 编排语言)�
 > **已落地**:**符号 fallback**(条件恢复同源,DESIGN §7 L3)——调用**未定义函数**不报死,`undefined-function` 的 handler 让模型**按函数名(可选 examples)合成**函数体、`walk-check`(只禁 `*dangerous*`,允许未知名以便递归 fallback)、装上、`invoke continue` 重试;合成体里再调别的未定义 helper 会**递归自顶向下物化**(`sumsq`→`sq`),退出后自动解绑、绝不合成危险名。= `intent` 的合成被**运行时缺失符号反应式触发**(`intent` 是展开期主动固化)。`make fallback`。
 
 > **已落地**:**AST 依赖图自动并行**(DESIGN §7)——homoiconicity 让依赖分析白赚:walk 一批 defun 的 AST 取出彼此调用关系 → 拓扑**分层**(`dep-layers`,带环检测)→ 每层独立节点**并发执行**(`run-graph`,`sb-thread`)。ailisp 里值得并行的成本是 LLM 调用,所以落点是 `synth-graph`:**互不依赖的 helper 同层并发合成**(LLM 往返重叠)。live:第一层 3 个合成并发,墙钟 ~2600ms → ~1345ms。`make parallel`。
+
+> **已落地**:**NL reader 宏 `#L`**(DESIGN §4/L4,最细粒度的"lower↓")——把自然语言直接写进代码,**读期**由模型译成一条 Lisp 表达式、`walk-check` 把关(危险算子拒绝、绝不拼接)、再固化进缓存。`(* 100 #L"the number of days in a non-leap year")` 在 read 时变成 `(* 100 365)` → 36500;同一段 `#L` 再读是纯离线缓存命中。= `intent` 下沉到 reader(intent 是 s-表达式语法上的宏,`#L` 让你连括号都不用写)。`make nl`。

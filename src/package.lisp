@@ -34,6 +34,8 @@
    #:*fallback-descriptions* #:synth-missing-fn #:call-with-symbol-fallback #:with-symbol-fallback
    ;; AST dependency-graph auto-parallel: layer independent defuns, synthesize concurrently
    #:defun-deps #:dep-layers #:defun-layers #:run-graph #:synth-graph
+   ;; NL reader macro: #L"natural language" -> synthesized form at read time
+   #:synth-nl-form #:nl-expand #:nl-reader
    ;; bench (M7)
    #:*last-usage* #:*bench-tasks* #:run-bench #:run-task
    #:parse-call-sexpr #:parse-call-json #:grade-call #:arg=

@@ -89,7 +89,9 @@ record/replay 在这里自然落地。这是最强的「lower↓」——把自�
 1. **L1 带 schema 的 LLM 函数** `(ai prompt :into schema)` —— 结构化、可校验输出。最实用,先做。
 2. **L2 代码生成 + eval / 宏** —— LLM 产出 s-表达式程序再求值;`intent` 宏在展开期固化。
 3. **L3 符号 fallback** —— 调用未定义函数时,把"函数名当意图"交给 LLM 推断(实验特性)。
-4. **L4 NL reader 宏** —— 读入阶段把自然语言翻成 s-表达式(实验特性)。
+4. **L4 NL reader 宏** —— 读入阶段把自然语言翻成 s-表达式。**已落地(`src/nl.lisp`):** `#L"自然语言"`
+   在 read 时由模型译成一条表达式、`walk-check` 把关、固化进 intent 缓存,拼回原处;`(* 100 #L"days in a
+   non-leap year")` 读成 `(* 100 365)`。= `intent` 下沉到 reader。6 条确定性单测,`make nl` live(平方和 1..10 ⇒ 385)。
 
 **两个杀手洞见(homoiconicity 红利):**
 - **Tool use = `eval`** —— LLM 直接吐 `(get-weather "北京")`,`(eval it)` 即可,整个 JSON function-calling 协议坍缩成一个 eval。
@@ -346,7 +348,8 @@ NL 条件编译下沉,以及——**真的做出来并 benchmark**(Pel 自承无
     **schema 含裸类型符号 ⇒ 本就是数据,需 `'{...}`(非 bug,是正确 Lisp;非裸符号的数据/值无需 quote)**
   - [x] 确定性:EVAL(管道)7 条 + PARAMS 5 条 → 总 **43/43 绿**;live(extraction/agent/rag)无回归
 - [ ] M3 L2:`ai-code` + `eval` + `intent` 宏
-- [ ] M4 NL 条件编译下沉(超 Pel 验证点)
+- [~] M4 NL 条件编译下沉(超 Pel 验证点)—— NL reader 宏 `#L` 已落地(`src/nl.lisp`,读期合成+固化,见 §3 L4);
+  「条件」专用语义(把布尔判断一次性降解为缓存的确定性谓词)仍可在其上加薄封装
 - [x] M5 REPL:条件/重启 + 保留中间态 + 自愈 patch(`src/safe-eval.lisp` 可重启 `eval-error` +
   `src/repel.lisp` `repair-eval`/`repel`;`retry-with`/`use-value`/`skip` restart,修复再过 `walk-check`;
   9 条确定性单测,`make repel` live。见 §7)
@@ -415,7 +418,8 @@ NL 条件编译下沉,以及——**真的做出来并 benchmark**(Pel 自承无
     - **plan-execute:正确率追平/略胜,往返 −6×、token −76%、延迟 −82%。** 难控制流上 JSON 往返爆炸(cf-count2/nested/filtsum 各 12 次撞上限且常错)。
     - (mlx_lm.server 不返回 tool_calls → 改用 content-JSON 协议:两边都输出到 content、都由我们解析,对称且运行时无关。)
   - [ ] (可选)更复杂任务 / 非本地 provider / plan-execute 残留失败(cf-cond/nested)诊断
-- [ ] (实验) L3 符号 fallback、L4 NL reader、AST 自动并行、向量检索
+- [x] (实验) L3 符号 fallback(`src/fallback.lisp`)、L4 NL reader(`src/nl.lisp`)、AST 自动并行
+  (`src/parallel.lisp`)、向量检索(`src/rag.lisp` via hiai-core KB)—— 均已落地 + 测试(见 §3、§7、§10)
 
 ---
 
