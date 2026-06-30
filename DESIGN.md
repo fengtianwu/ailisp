@@ -389,7 +389,10 @@ NL 条件编译下沉,以及——**真的做出来并 benchmark**(Pel 自承无
       因 BPE 分词器对 JSON 高度优化,字符少≠token 少);延迟运行噪声太大(同配置 2× 跳动)无法判定。**
     - **"s-expr 更省成本"经正确测量不成立。** ⇒ ailisp 的价值须落在 homoiconicity / `eval` / 宏 / agent=REPL,
       而非简单工具调用的 token 成本。诚实记录,停止调参(避免 p-hacking)。
-  - [ ] (可选)多 provider / 多任务类目(parallel/multiple)/ record-replay 固定
+  - [x] **record/replay 固定(`src/replay.lisp`)** —— `record-model` 包真模型录 (请求→响应) 进 `tests/fixtures/`,
+    `replay-model` 离线回放(按 messages+params 为键,顺序无关、复现重试);已录 react/build/solve 三条 live 流,
+    `make replay` 逐字复现、`make ci` = test+replay 全离线。4 条机制单测(record→replay 往返 + 缺失检测)。
+  - [ ] (可选)多 provider / 多任务类目(parallel/multiple)
 
 - [x] M8 组合性实验:plan-execute(代码合成)vs JSON function-calling(`bench/compose.lisp`,`make compose`)
   - 8 个多步依赖任务;JSON 侧用**真 function-calling API**(tools schema → tool_calls → 回灌 tool 结果 → 多轮)

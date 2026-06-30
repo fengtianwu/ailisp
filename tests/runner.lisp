@@ -16,7 +16,8 @@
     "tests/unit/repel.cases.lisp"
     "tests/unit/fallback.cases.lisp"
     "tests/unit/parallel.cases.lisp"
-    "tests/unit/nl.cases.lisp"))
+    "tests/unit/nl.cases.lisp"
+    "tests/unit/replay.cases.lisp"))
 
 (defun read-cases-file (path)
   "Return the list of (deftestset NAME case...) forms in PATH, read as data."
@@ -251,6 +252,29 @@
                 (values nil (format nil "order ~S != ~S" seq (getf c :expect-order))))
                (t (values t nil))))))))
 
+(defun run-replay-case (c)
+  "Record a react flow (mock inner), then replay it from the captured request->response fixtures
+   and assert it reproduces the answer with zero fixture misses. :drop t asserts a dropped
+   fixture is detected instead."
+  (let* ((tools (loop for (sym . form) in (getf c :env)
+                      collect (ailisp:make-tool :name sym :fn (eval form) :doc "")))
+         (steps (or (getf c :max-steps) 6))
+         (rec (ailisp:make-record-model :inner (ailisp:make-mock-model :responses (getf c :script))))
+         (ans1 (ailisp:react (getf c :goal) tools :model rec :max-steps steps))
+         (fixtures (if (getf c :drop) '() (ailisp:record-model-fixtures rec)))
+         (rep (ailisp:make-replay-from-fixtures fixtures :strict nil))
+         (ans2 (ailisp:react (getf c :goal) tools :model rep :max-steps steps)))
+    (if (getf c :drop)
+        (if (> (ailisp:replay-model-misses rep) 0) (values t nil)
+            (values nil "expected a fixture miss when fixtures were dropped"))
+        (cond ((not (equal ans1 (getf c :answer)))
+               (values nil (format nil "record answer ~S != ~S" ans1 (getf c :answer))))
+              ((not (equal ans2 ans1))
+               (values nil (format nil "replay ~S != record ~S" ans2 ans1)))
+              ((> (ailisp:replay-model-misses rep) 0)
+               (values nil (format nil "replay had ~A fixture miss(es)" (ailisp:replay-model-misses rep))))
+              (t (values t nil))))))
+
 (defun run-nl-case (c)
   "Drive synth-nl-form with a mock model (scripted candidate expressions). Deterministic: asserts
    the read-time NL synthesizer parses / safety-walks / retries, yielding the expected form."
@@ -309,6 +333,7 @@
         ((string-equal testset-name "FALLBACK")        (run-fallback-case c))
         ((string-equal testset-name "PARALLEL")        (run-parallel-case c))
         ((string-equal testset-name "NL")              (run-nl-case c))
+        ((string-equal testset-name "REPLAY")          (run-replay-case c))
         (t (values nil (format nil "unknown testset ~A" testset-name)))))
 
 (defun run-all ()

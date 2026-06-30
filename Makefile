@@ -25,7 +25,7 @@ bench:
 bfcl:
 	$(SBCL) --script run-bfcl.lisp $(N)
 
-.PHONY: test test-live bench
+.PHONY: test test-live bench record replay ci nl repel fallback parallel sql intent
 
 # Composability bench: plan-execute (1 s-expr program) vs JSON tool-chaining.
 compose:
@@ -70,6 +70,17 @@ parallel:
 # NL reader macro: #L"natural language" -> a Lisp form synthesized at read time, cached.
 nl:
 	$(SBCL) --script run-nl.lisp
+
+# Record live agent flows into tests/fixtures/ (needs hiai-core).
+record:
+	$(SBCL) --script run-record.lisp
+
+# Replay the recorded flows OFFLINE and assert each reproduces (CI-able; no model).
+replay:
+	$(SBCL) --script run-replay.lisp
+
+# The full offline gate for CI: deterministic suite + replayed live flows. No network.
+ci: test replay
 
 # Full guided tour of all the patterns (edit/comment sections inside).
 showcase:

@@ -36,6 +36,10 @@
    #:defun-deps #:dep-layers #:defun-layers #:run-graph #:synth-graph
    ;; NL reader macro: #L"natural language" -> synthesized form at read time
    #:synth-nl-form #:nl-expand #:nl-reader
+   ;; record/replay: capture live chat fixtures, replay offline in CI
+   #:record-model #:make-record-model #:record-model-fixtures #:record-model-inner
+   #:replay-model #:make-replay-from-fixtures #:replay-model-from-file #:replay-model-misses
+   #:write-fixtures #:read-fixture-file #:%request-key
    ;; bench (M7)
    #:*last-usage* #:*bench-tasks* #:run-bench #:run-task
    #:parse-call-sexpr #:parse-call-json #:grade-call #:arg=
