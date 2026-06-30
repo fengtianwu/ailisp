@@ -55,6 +55,10 @@ sql:
 intent:
 	$(SBCL) --script run-intent.lisp
 
+# Self-heal (pillar 4 / 条件恢复): a runtime error -> restartable condition -> model repair.
+repel:
+	$(SBCL) --script run-repel.lisp
+
 # Full guided tour of all the patterns (edit/comment sections inside).
 showcase:
 	$(SBCL) --script showcase.lisp

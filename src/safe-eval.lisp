@@ -8,6 +8,17 @@
 
 (define-condition budget-exceeded (error) ())
 
+(define-condition eval-error (error)
+  ((form  :initarg :form  :reader eval-error-form)
+   (cause :initarg :cause :reader eval-error-cause))
+  (:report (lambda (c s)
+             (format s "eval-error evaluating ~S: ~A"
+                     (eval-error-form c) (eval-error-cause c))))
+  (:documentation
+   "Signalled (pillar 4 / 条件恢复) when LLM-generated code errors at runtime. It is a
+    RESTARTABLE error: an outer handler may invoke RETRY-WITH / USE-VALUE / SKIP to heal
+    without discarding state. Unhandled, it is benign -- the run falls back to :abort."))
+
 (defvar *budget-remaining* nil
   "When non-nil, remaining spend budget (USD). CHARGE decrements it.")
 
@@ -80,6 +91,37 @@
         (fmakunbound (car e))
         (setf (symbol-function (car e)) (cdr e)))))
 
+(defun eval-with-restarts (form tools tmo)
+  "Eval FORM (timeout TMO ms). A genuine runtime error is re-signalled as a RESTARTABLE
+   EVAL-ERROR, offering three named recovery restarts to any outer handler:
+     RETRY-WITH (new-form) -- re-evaluate a corrected form (RE-walk-checked for safety),
+     USE-VALUE  (v)        -- substitute V as the result,
+     SKIP       ()         -- abandon the form, result NIL.
+   With NO handler installed, SIGNAL returns and we fall back to (:abort :eval-error msg)
+   -- the historical contract, so plain safe-eval callers (react/build) are unaffected.
+   This separates error SIGNALLING (here) from recovery POLICY (the caller's handler)."
+  (handler-case
+      (values :ok (if tmo (sb-ext:with-timeout (/ tmo 1000.0) (eval form)) (eval form)))
+    (budget-exceeded () (values :abort :budget))
+    (sb-ext:timeout  () (values :abort :timeout))
+    ;; LLM-generated code can error in countless ways; never crash the host.
+    (error (e)
+      (restart-case
+          (progn
+            (signal 'eval-error :form form :cause e)        ; offer healing to outer handlers
+            ;; 3rd value = the error message (for retry feedback); reason stays :eval-error.
+            (values :abort :eval-error (princ-to-string e))) ; unhandled -> historical abort
+        (retry-with (new-form)
+          :report "Re-evaluate a corrected form (re-checked for safety)."
+          (let ((deny (walk-check new-form tools)))
+            (if deny (values :deny deny) (eval-with-restarts new-form tools tmo))))
+        (use-value (v)
+          :report "Use a supplied value as the result."
+          (values :ok v))
+        (skip ()
+          :report "Abandon this form; return NIL."
+          (values :ok nil))))))
+
 (defun run-form (form env tools limits)
   (let ((*budget-remaining* (getf limits :budget-usd))
         (tmo (getf limits :timeout-ms))
@@ -87,16 +129,7 @@
     (unwind-protect
          (progn
            (setf saved (%install-env env tools))
-           (handler-case
-               (let ((val (if tmo
-                              (sb-ext:with-timeout (/ tmo 1000.0) (eval form))
-                              (eval form))))
-                 (values :ok val))
-             (budget-exceeded () (values :abort :budget))
-             (sb-ext:timeout () (values :abort :timeout))
-             ;; LLM-generated code can error in countless ways; never crash the host.
-             ;; 3rd value = the error message (for retry feedback); reason stays :eval-error.
-             (error (e) (values :abort :eval-error (princ-to-string e)))))
+           (eval-with-restarts form tools tmo))   ; env stays installed across heals/retries
       (%restore-env saved))))
 
 (defun safe-eval (form &key tools env limits)

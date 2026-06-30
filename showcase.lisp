@@ -6,7 +6,7 @@
 (setf sb-impl::*default-external-format* :utf-8)
 (let ((root (or *load-pathname* *default-pathname-defaults*)))
   (dolist (f '("src/package" "src/reader" "src/schema" "src/model" "src/skills"
-               "src/ai" "src/safe-eval" "src/agent" "src/rag" "src/build" "src/patterns"
+               "src/ai" "src/safe-eval" "src/repel" "src/agent" "src/rag" "src/build" "src/patterns"
                "src/wolfram" "src/sql"))
     (handler-bind ((warning #'muffle-warning))
       (load (merge-pathnames (concatenate 'string f ".lisp") root)))))
@@ -26,6 +26,7 @@
 (format t "    §9-10  solve(递归分治) · 多 agent(llm-tool:llm 调 llm)~%")
 (format t "    §11    Wolfram(符号数学)  ·  §11b SQL(声明式查询,★本轮新增第三门语言)~%")
 (format t "    §12    settings:全局默认 + with-settings 单次覆盖~%")
+(format t "    §13    repel(自愈:运行时错误→可重启 condition→模型修复,★本轮新增)~%")
 (format t "    旁注   intent 宏 = 展开期把自然语言固化成代码(见 make intent,不在本巡演内)~%")
 (format t "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━~%")
 
@@ -118,5 +119,23 @@ insert into city values ('Tokyo',37),('Delhi',32),('Paris',11),('NewYork',19),('
   (with-settings (:system "只用一个中文词回答,不要英文。")
     (format t "with-settings(中文一词): ~A~%" (llm "What is the capital of France?")))
   (setf *settings* nil))
+
+;; ── 13. 自愈:运行时错误 = 可重启 condition,模型修复(柱子 4) ──
+(sec "13. repel(条件恢复 / 自愈)"
+  ;; fetch 第一次报"暂时不可用"(瞬时故障);错误被包成可重启的 eval-error,
+  ;; 把确切的 CL 错误给模型看 -> 模型给修复 -> retry-with 重跑,中间状态不丢。
+  (let* ((tries 0)
+         (tools (list (make-tool :name 'fetch
+                                 :fn (lambda (item)
+                                       (incf tries)
+                                       (cond ((and (string-equal item "apple") (= tries 1))
+                                              (error "service unavailable, retry"))
+                                             ((string-equal item "apple") 3)
+                                             ((string-equal item "pear") 5)
+                                             (t (error "unknown item ~S" item))))
+                                 :doc "取某商品价格(字符串名),如 (fetch \"apple\")"))))
+    (multiple-value-bind (result repairs)
+        (repel "苹果加梨的总价是多少?用 fetch 工具(参数是字符串商品名)。" tools :max-repairs 3 :verbose t)
+      (format t "RESULT = ~S   (自愈 ~A 次;期望 8)~%" result repairs))))
 
 (format t "~&~%(改 showcase.lisp 各段的提示词再跑;或注释掉不想跑的段。)~%")

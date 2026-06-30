@@ -244,6 +244,11 @@ s-表达式调用,在**能力受限的环境**里求值(§6):
 - 寄生在 CL ⇒ **REPeL 不用重造,直接用 CL 的 condition/restart 系统**(Pel 在 Python 里费劲模仿的就是它)。
   出错不崩,**保留已算出的(贵的)中间状态**;重启项 = 重写整段 / 从错误处往后 / 只重写当前表达式 /
   中止 / LLM 自愈。
+  - **已落地(`src/safe-eval.lisp` + `src/repel.lisp`):** `safe-eval` 把 LLM 代码的运行时错误经 `eval-with-restarts`
+    重新 signal 成**可重启的 `eval-error`**,offer 三个 restart:`retry-with`(重写当前表达式,**再过一次
+    `walk-check`** 保安全)/ `use-value`(替换结果)/ `skip`(放弃返回 NIL)。无处理器时回落到历史的 `:abort`——
+    老调用方(react/build)零影响。`repair-eval` = 原语(safe-eval + 自愈处理器,分离信号/策略/恢复手段);`repel`
+    = 把回路接给模型的 REPL(确切 CL 错误 → 模型修复 → retry-with 重跑)。9 个确定性单测 + `make repel` live。
 - **L3 符号 fallback 也走条件系统**:为 `undefined-function` 挂 handler,提供"问 LLM"的 restart。
 - **AST 依赖图自动并行**:无依赖的顶层定义并发执行(不可变 ⇒ 依赖分析干净)。
 
@@ -330,7 +335,9 @@ NL 条件编译下沉,以及——**真的做出来并 benchmark**(Pel 自承无
   - [x] 确定性:EVAL(管道)7 条 + PARAMS 5 条 → 总 **43/43 绿**;live(extraction/agent/rag)无回归
 - [ ] M3 L2:`ai-code` + `eval` + `intent` 宏
 - [ ] M4 NL 条件编译下沉(超 Pel 验证点)
-- [ ] M5 REPL:条件/重启 + 保留中间态 + 自愈 patch
+- [x] M5 REPL:条件/重启 + 保留中间态 + 自愈 patch(`src/safe-eval.lisp` 可重启 `eval-error` +
+  `src/repel.lisp` `repair-eval`/`repel`;`retry-with`/`use-value`/`skip` restart,修复再过 `walk-check`;
+  9 条确定性单测,`make repel` live。见 §7)
 - [ ] M6 安全:文法约束 + 效应/能力 + 成本预算
 - [x] M7 评测框架:s-表达式工具调用 vs JSON function-calling 头对头(`bench/`,`make bench`)
   - [x] 评分器(`bench/grade.lisp`,确定性 10 条测试)+ 任务集 + harness(token/延迟/正确率)

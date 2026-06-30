@@ -12,7 +12,8 @@
     "tests/unit/grade.cases.lisp"
     "tests/unit/bfcl.cases.lisp"
     "tests/unit/build.cases.lisp"
-    "tests/unit/intent.cases.lisp"))
+    "tests/unit/intent.cases.lisp"
+    "tests/unit/repel.cases.lisp"))
 
 (defun read-cases-file (path)
   "Return the list of (deftestset NAME case...) forms in PATH, read as data."
@@ -156,6 +157,43 @@
         (:fail (if ok (values nil (format nil "expected failure but got ~S" body))
                    (values t nil)))))))
 
+(defun run-repel-case (c)
+  "Drive repair-eval with a scripted :strategy standing in for the model's repair. Asserts
+   the restartable eval-error heals (or aborts) deterministically -- no network."
+  (let* ((tools (getf c :tools))
+         (env (loop for (sym . form) in (getf c :env) collect (cons sym (eval form))))
+         (strategy (getf c :strategy))
+         (kind (first strategy))
+         (rest (cdr strategy))
+         (repair (lambda (failing cause n)
+                   (declare (ignore failing cause n))
+                   (ecase kind
+                     (:retry (if rest (values :retry (pop rest)) nil))
+                     (:use-value (values :use-value (first rest)))
+                     (:skip (values :skip))
+                     (:give-up nil)))))
+    (multiple-value-bind (status detail n)
+        (ailisp:repair-eval (getf c :form) :tools tools :env env
+                            :repair repair :max-repairs (or (getf c :max-repairs) 2))
+      (flet ((repairs-ok ()
+               (or (not (member :repairs c)) (eql n (getf c :repairs)))))
+        (ecase (getf c :expect)
+          (:ok (cond ((not (eq status :ok))
+                      (values nil (format nil "expected :ok got ~A ~A" status detail)))
+                     ((and (member :value c) (not (equal detail (getf c :value))))
+                      (values nil (format nil "value ~S != ~S" detail (getf c :value))))
+                     ((not (repairs-ok))
+                      (values nil (format nil "repairs ~A != ~A" n (getf c :repairs))))
+                     (t (values t nil))))
+          ((:deny :abort)
+           (cond ((not (eq status (getf c :expect)))
+                  (values nil (format nil "expected ~A got ~A ~A" (getf c :expect) status detail)))
+                 ((and (getf c :reason) (not (eq detail (getf c :reason))))
+                  (values nil (format nil "reason ~A != ~A" detail (getf c :reason))))
+                 ((not (repairs-ok))
+                  (values nil (format nil "repairs ~A != ~A" n (getf c :repairs))))
+                 (t (values t nil)))))))))
+
 (defun run-params-case (c)
   (let ((p (ailisp:resolve-params :auto :into (getf c :into)
                                         :tools (getf c :tools)
@@ -197,6 +235,7 @@
         ((string-equal testset-name "PARAMS")          (run-params-case c))
         ((string-equal testset-name "BUILD")           (run-build-case c))
         ((string-equal testset-name "INTENT")          (run-intent-case c))
+        ((string-equal testset-name "REPEL")           (run-repel-case c))
         (t (values nil (format nil "unknown testset ~A" testset-name)))))
 
 (defun run-all ()

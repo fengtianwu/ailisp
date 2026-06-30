@@ -8,6 +8,9 @@
    #:validate #:render-schema
    ;; safe-eval
    #:safe-eval #:charge #:budget-exceeded #:*budget-remaining*
+   ;; condition recovery (pillar 4): restartable eval-error + self-heal loop
+   #:eval-error #:eval-error-form #:eval-error-cause #:eval-with-restarts
+   #:retry-with #:skip #:repair-eval #:repel
    ;; model layer
    #:*model* #:chat #:call-model #:%msg
    #:make-mock-model #:mock-model #:mock-model-calls
