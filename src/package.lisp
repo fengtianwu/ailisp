@@ -42,6 +42,9 @@
    #:write-fixtures #:read-fixture-file #:%request-key
    ;; MCP as an external tool source: connect a server, wrap its tools as ailisp tools
    #:mcp-connect #:mcp-close #:mcp-list-tools #:mcp-call #:mcp-tool #:mcp-tools #:mcp-p
+   ;; Cadence SKILL sublanguage + a SKILL-writing agent (write -> lint -> run -> self-heal)
+   #:skill-run #:skill-lint #:skill-defs #:skill-read-all #:skill-error #:skill-intern
+   #:skill-verify #:write-skill #:skill-lint-tool #:skill-run-tool
    ;; bench (M7)
    #:*last-usage* #:*bench-tasks* #:run-bench #:run-task
    #:parse-call-sexpr #:parse-call-json #:grade-call #:arg=

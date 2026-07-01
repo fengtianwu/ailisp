@@ -25,7 +25,7 @@ bench:
 bfcl:
 	$(SBCL) --script run-bfcl.lisp $(N)
 
-.PHONY: test test-live bench record replay ci nl repel fallback parallel sql intent mcp
+.PHONY: test test-live bench record replay ci nl repel fallback parallel sql intent mcp skill
 
 # Composability bench: plan-execute (1 s-expr program) vs JSON tool-chaining.
 compose:
@@ -82,6 +82,11 @@ replay:
 # MCP as an external tool source: connect a stdio server, wrap its tools, use via react.
 mcp:
 	$(SBCL) --script run-mcp.lisp
+
+# A real agent: authors Cadence SKILL (Cadence's Lisp dialect), verified in an in-CL SKILL
+# sandbox (write -> lint -> run examples -> self-heal). Offline self-check + live section.
+skill:
+	$(SBCL) --script run-skill.lisp
 
 # The full offline gate for CI: deterministic suite + replayed live flows. No network.
 ci: test replay

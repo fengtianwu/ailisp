@@ -18,7 +18,8 @@
     "tests/unit/parallel.cases.lisp"
     "tests/unit/nl.cases.lisp"
     "tests/unit/replay.cases.lisp"
-    "tests/unit/mcp.cases.lisp"))
+    "tests/unit/mcp.cases.lisp"
+    "tests/unit/skill.cases.lisp"))
 
 (defun read-cases-file (path)
   "Return the list of (deftestset NAME case...) forms in PATH, read as data."
@@ -342,6 +343,45 @@
       (if (eq got want) (values t nil)
           (values nil (format nil "graded ~A, expected ~A (name=~S args=~S)" got want name args))))))
 
+(defun run-skill-case (c)
+  "Assert the Cadence SKILL sublanguage + SKILL-writing agent. :run evaluates a SKILL source
+   and calls a procedure; :lint gates syntax/unknown-ops; :write drives write-skill with a mock
+   model (scripted SKILL replies) and checks the self-heal loop -- all deterministic, no network."
+  (ecase (getf c :kind)
+    (:run
+     (if (eq (getf c :expect) :error)
+         (handler-case
+             (progn (ailisp:skill-run (getf c :source) :call (cons (getf c :proc) (getf c :args)))
+                    (values nil "expected an error"))
+           (error () (values t nil)))
+         (let ((got (ailisp:skill-run (getf c :source) :call (cons (getf c :proc) (getf c :args)))))
+           (if (equal got (getf c :value)) (values t nil)
+               (values nil (format nil "=> ~S != ~S" got (getf c :value)))))))
+    (:lint
+     (let ((lint (ailisp:skill-lint (getf c :source))))
+       (ecase (getf c :expect)
+         (:ok (if (null lint) (values t nil)
+                  (values nil (format nil "expected ok, got ~S" lint))))
+         (:bad (cond ((null lint) (values nil "expected a lint error"))
+                     ((and (getf c :contains) (not (search (getf c :contains) lint)))
+                      (values nil (format nil "~S lacks ~S" lint (getf c :contains))))
+                     (t (values t nil)))))))
+    (:write
+     (let ((m (ailisp:make-mock-model :responses (getf c :script))))
+       (multiple-value-bind (src ok)
+           (ailisp:write-skill (getf c :desc) :name (getf c :proc) :params (getf c :params)
+                               :examples (getf c :examples) :model m
+                               :max-tries (or (getf c :max-tries) 4))
+         (cond
+           ((not (eq (and ok t) (and (getf c :expect-ok) t)))
+            (values nil (format nil "ok ~S != ~S" (and ok t) (and (getf c :expect-ok) t))))
+           ((and (member :calls c) (not (eql (ailisp:mock-model-calls m) (getf c :calls))))
+            (values nil (format nil "calls ~A != ~A" (ailisp:mock-model-calls m) (getf c :calls))))
+           ((and ok (getf c :examples)
+                 (ailisp:skill-verify src (ailisp:skill-intern (getf c :proc)) (getf c :examples)))
+            (values nil "returned source fails its own examples"))
+           (t (values t nil))))))))
+
 (defun run-case (testset-name c)
   (cond ((string-equal testset-name "GRADE")           (run-grade-case c))
         ((string-equal testset-name "BFCL-GRADE")      (run-bfcl-grade-case c))
@@ -360,6 +400,7 @@
         ((string-equal testset-name "NL")              (run-nl-case c))
         ((string-equal testset-name "REPLAY")          (run-replay-case c))
         ((string-equal testset-name "MCP")             (run-mcp-case c))
+        ((string-equal testset-name "SKILL")           (run-skill-case c))
         (t (values nil (format nil "unknown testset ~A" testset-name)))))
 
 (defun run-all ()
