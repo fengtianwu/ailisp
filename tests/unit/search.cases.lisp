@@ -35,16 +35,15 @@
             "(defun sq (x) (times x x))")     ; 25,9  -> 2/2  GOAL
    :expect-ok t :calls 2)
 
-  ;; no goal in round 1 (0.5 and 0.0); TELEPORT to the better (0.5) node and expand it; the
-  ;; correct program appears in round 2. 2 expansions x branch 2 = 4 model calls.
+  ;; no goal in round 1 (0.5 and 0.0, so branch 2 runs fully = 2 calls); TELEPORT to the better
+  ;; (0.5) node and expand it; round 2's FIRST candidate is correct -> short-circuit (1 call). = 3.
   (:name "skill-teleport-second-round" :kind :skill
    :desc "square of x" :proc "sq" :params (x) :examples (((5) 25) ((3) 9))
    :branch 2 :beam 2 :budget 6
    :script ("(defun sq (x) (plus x 20))"      ; 25,23 -> 1/2 = 0.5  (best so far)
             "(defun sq (x) (plus x 1))"       ; 6,4   -> 0/2 = 0.0
-            "(defun sq (x) (times x x))"      ; 25,9  -> 2/2  GOAL
-            "(defun sq (x) 0)")               ; filler (same expansion consumes branch=2)
-   :expect-ok t :calls 4)
+            "(defun sq (x) (times x x))")     ; 25,9  -> 2/2  GOAL (round 2, short-circuits)
+   :expect-ok t :calls 3)
 
   ;; never reaches 1.0 within budget -> ok NIL, and it returns the best PARTIAL (0.5), not nil.
   (:name "skill-gives-up-keeps-partial" :kind :skill

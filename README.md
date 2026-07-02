@@ -122,6 +122,7 @@ make record      # 录制 live agent 流(react/build/solve)的 chat fixtures(需
 make replay      # 离线复现录制的 live 流并断言一致(CI 用,无需模型)
 make mcp         # MCP 外部 tool 源:连 stdio MCP server→工具包成 ailisp tool→react(离线自检 + live)
 make skill       # 一个真实 agent:用 ailisp 写 Cadence SKILL(写→lint→跑样例→自愈,离线自检 + live)
+make search      # 搜索图层:write-skill(线性重试)vs search-skill(best-first 树,验证器当分)对比,数调用次数
 ```
 
 小试(`make repl` 里):

@@ -25,7 +25,7 @@ bench:
 bfcl:
 	$(SBCL) --script run-bfcl.lisp $(N)
 
-.PHONY: test test-live bench record replay ci nl repel fallback parallel sql intent mcp skill
+.PHONY: test test-live bench record replay ci nl repel fallback parallel sql intent mcp skill search
 
 # Composability bench: plan-execute (1 s-expr program) vs JSON tool-chaining.
 compose:
@@ -87,6 +87,11 @@ mcp:
 # sandbox (write -> lint -> run examples -> self-heal). Offline self-check + live section.
 skill:
 	$(SBCL) --script run-skill.lisp
+
+# Search-graph layer: write-skill (linear retry) vs search-skill (best-first tree, verifier=score)
+# on the same task/model, counting model calls. Offline self-check + live head-to-head.
+search:
+	$(SBCL) --script run-search.lisp
 
 # The full offline gate for CI: deterministic suite + replayed live flows. No network.
 ci: test replay

@@ -135,18 +135,25 @@
          (score (lambda (state) (if (null state) 0.0 (skill-score state namesym examples))))
          (goalp (lambda (state) (and state (>= (funcall score state) 1.0))))
          (expand (lambda (state)
-                   ;; branch candidates; deeper in the tree -> higher temperature (more diverse
-                   ;; exploration), the same rising-temp idea write-skill uses on retries.
+                   ;; up to BRANCH candidates; deeper in the tree -> higher temperature (more
+                   ;; diverse exploration), the same rising-temp idea write-skill uses on retries.
+                   ;; Short-circuit: once a candidate already SCORES a goal, stop spending calls --
+                   ;; so an easy task the model one-shots costs 1 call, not BRANCH (search is then
+                   ;; cost-competitive with the linear write-skill, and still branches when stuck).
                    (let ((fb (and state
                                   (format nil "~%(previous attempt scored ~,2F: ~A -- improve it)"
                                           (funcall score state)
                                           (or (skill-verify state namesym examples)
                                               "it does not lint/parse"))))
                          (out '()))
-                     (dotimes (k branch (nreverse out))
-                       (let ((cand (%skill-candidate name params description examples fb model
-                                                     (min 0.9 (+ 0.2 (* 0.3 k))))))
-                         (when cand (push cand out))))))))
+                     (block gen
+                       (dotimes (k branch)
+                         (let ((cand (%skill-candidate name params description examples fb model
+                                                       (min 0.9 (+ 0.2 (* 0.3 k))))))
+                           (when cand
+                             (push cand out)
+                             (when (>= (funcall score cand) 1.0) (return-from gen))))))
+                     (nreverse out)))))
     (multiple-value-bind (node ok)
         (tree-search nil :expand expand :score score :goalp goalp
                          :beam beam :branch branch :budget budget :max-depth max-depth
