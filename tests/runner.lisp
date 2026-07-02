@@ -387,7 +387,10 @@
   "Assert the search-graph layer. :toy drives the pure combinator over integers (no model) --
    :policy :mcts uses UCT, else best-first climbs -(|x-target|) to the goal, visited-prunes,
    returns best on give-up. :skill drives SEARCH-SKILL with a mock model (scripted SKILL) using
-   the interpreter as the graded score, under :policy :best-first|:mcts -- all deterministic."
+   the interpreter as the graded score, under :policy :best-first|:mcts. :checkpoint asserts the
+   mutable-state teleport primitive (workspace-checkpoint/restore round-trips the live image).
+   :build drives SEARCH-BUILD (mock model), which teleports between build-agent workspaces --
+   all deterministic, no network."
   (ecase (getf c :kind)
     (:toy
      (let* ((target (getf c :target)) (lo (getf c :lo)) (hi (getf c :hi))
@@ -430,6 +433,37 @@
            ((and ok (getf c :examples)
                  (ailisp:skill-verify src (ailisp:skill-intern (getf c :proc)) (getf c :examples)))
             (values nil "returned source fails its own examples"))
+           (t (values t nil))))))
+    ;; mutable-state teleport: checkpoint the live workspace, mutate it, restore, assert it's back.
+    (:checkpoint
+     (let ((ws (ailisp:make-build-ws :pkg (find-package :ailisp/tests))))
+       (ailisp::%build-step ws '(defun cpfoo (x) (+ x 1)))
+       (let ((cp (ailisp:workspace-checkpoint ws)) (midok nil) (afterok nil))
+         (ailisp::%build-step ws '(defun cpfoo (x) (+ x 100)))   ; redefine an existing name
+         (ailisp::%build-step ws '(defun cpbar (x) x))           ; add a new name
+         (setf midok (and (eql (funcall (symbol-function 'cpfoo) 1) 101) (and (fboundp 'cpbar) t)))
+         (ailisp:workspace-restore ws cp)                        ; TELEPORT back
+         (setf afterok (and (eql (funcall (symbol-function 'cpfoo) 1) 2) (not (fboundp 'cpbar))))
+         (when (fboundp 'cpfoo) (fmakunbound 'cpfoo))            ; cleanup
+         (cond ((not midok) (values nil "pre-restore mutation not visible"))
+               ((not afterok) (values nil "teleport (restore) did not reconstruct the workspace"))
+               (t (values t nil))))))
+    ;; search over build-agent workspaces: branches share the live image, so teleport is REQUIRED.
+    (:build
+     (let* ((tools (loop for (sym . form) in (getf c :tools)
+                         collect (ailisp:make-tool :name sym :fn (eval form) :doc "")))
+            (m (ailisp:make-mock-model :responses (getf c :script))))
+       (multiple-value-bind (ok score)
+           (ailisp:search-build nil tools (getf c :proc) (getf c :examples) :model m
+                                :policy (or (getf c :policy) :best-first)
+                                :branch (or (getf c :branch) 2) :beam (or (getf c :beam) 2)
+                                :budget (or (getf c :budget) 6) :max-depth (or (getf c :max-depth) 4))
+         (cond
+           ((not (eq (and ok t) (and (getf c :expect-ok) t)))
+            (values nil (format nil "ok ~S != ~S" (and ok t) (and (getf c :expect-ok) t))))
+           ((and (member :calls c) (not (eql (ailisp:mock-model-calls m) (getf c :calls))))
+            (values nil (format nil "calls ~A != ~A" (ailisp:mock-model-calls m) (getf c :calls))))
+           ((and ok (< score 1.0)) (values nil (format nil "ok but score ~,2F < 1.0" score)))
            (t (values t nil))))))))
 
 (defun run-case (testset-name c)

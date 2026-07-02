@@ -81,4 +81,29 @@
    :script ("(defun sq (x) (plus x 20))"      ; 25,23 -> 0.5
             "(defun sq (x) (plus x 1))"       ; 6,4   -> 0.0
             "(defun sq (x) (times x x))")     ; 25,9  -> 2/2 GOAL (2nd iteration)
-   :expect-ok t :calls 3))
+   :expect-ok t :calls 3)
+
+  ;; ---- build-agent checkpoint teleport: the MUTABLE-STATE case ----
+  ;; the primitive itself: checkpoint the live workspace, redefine a fn + add another, then
+  ;; RESTORE -> the redefinition is undone and the new fn is unbound (teleport reconstructs it).
+  (:name "checkpoint-restore-round-trip" :kind :checkpoint)
+
+  ;; search-build teleports between build-agent workspaces (they share the live image, so restore
+  ;; is REQUIRED before each branch): root -> two wrong impls (2 calls); teleport to the 0.5 one
+  ;; and expand -> the correct impl (short-circuits). = 3 calls.
+  (:name "build-teleport-to-better-branch" :kind :build
+   :proc "sq" :examples (((5) 25) ((3) 9))
+   :tools ((mul . (lambda (a b) (* a b))))
+   :branch 2 :beam 2 :budget 6
+   :script ("(defun sq (x) (mul x 5))"        ; 25,15 -> 0.5
+            "(defun sq (x) (mul x 1))"        ; 5,3   -> 0.0
+            "(defun sq (x) (mul x x))")       ; 25,9  -> 1.0 GOAL (2nd expansion)
+   :expect-ok t :calls 3)
+
+  ;; first branch already correct -> short-circuit after one model turn.
+  (:name "build-first-branch-hits" :kind :build
+   :proc "sq" :examples (((5) 25) ((3) 9))
+   :tools ((mul . (lambda (a b) (* a b))))
+   :branch 2 :budget 6
+   :script ("(defun sq (x) (mul x x))")       ; 25,9 -> 1.0 GOAL, 1 call
+   :expect-ok t :calls 1))

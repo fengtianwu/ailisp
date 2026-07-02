@@ -254,3 +254,70 @@
                            :c c :test 'equal :verbose verbose)))
       (when verbose (format t "~&[search-skill/~(~A~)] best score ~,2F~%" policy (snode-score node)))
       (values (snode-state node) (and ok t) (snode-score node)))))
+
+;;; ---- search-build: the MUTABLE-STATE case -- teleport via checkpoint/restore ----------------
+;;; build-agent's state is live fdefinitions in the image, not an immutable value, so a node
+;;; cannot be teleported to for free: a node's STATE is a WORKSPACE-CHECKPOINT, and every score
+;;; or expand first WORKSPACE-RESTOREs it (reinstalls the fdefinitions) before touching the image.
+;;; This is the exact contrast the search-layer note draws: functional state = teleport-free,
+;;; mutable state = teleport-by-restore. The verifier (fraction of EXAMPLES the target function
+;;; NAME passes) is still the score, so the same tree-search / mcts planners drive it unchanged.
+
+(defun search-build (task tools name examples
+                     &key (model *model*) (branch 3) (beam 3) (budget 12) (max-depth 4)
+                          (policy :best-first) (c 1.414d0) verbose)
+  "Search over incremental-construction (build-agent) workspaces: branch the model's next turn,
+   apply each to a RESTORED copy of the parent workspace, and keep the branch whose target
+   function NAME best satisfies EXAMPLES. Because the workspace is mutable, branching REQUIRES
+   checkpoint teleport (restore the parent before each branch, else branches clobber each other
+   in the shared image). Returns (values ok score forms)."
+  (let* ((pkg (if tools (symbol-package (tool-name (first tools))) (find-package :ailisp)))
+         (env (mapcar (lambda (tt) (cons (tool-name tt) (tool-fn tt))) tools))
+         (tooldocs (%build-tooldocs tools))
+         (examples (%clean-examples examples))
+         (namesym (intern (string-upcase (string name)) pkg))
+         (ws (make-build-ws :pkg pkg :names (mapcar #'car env))))
+    (labels ((fn-score ()
+               (if (and (fboundp namesym) examples)
+                   (/ (count-if (lambda (ex)
+                                  (handler-case (equal (apply namesym (first ex)) (second ex))
+                                    (error () nil)))
+                                examples)
+                      (float (length examples)))
+                   0.0))
+             (score (cp) (workspace-restore ws cp) (fn-score))
+             (goalp (cp) (>= (score cp) 1.0))
+             (turn ()
+               (let ((raw (handler-case
+                              (llm (%build-prompt task tooldocs (build-ws-entries ws)
+                                                  (build-ws-implemented ws) (build-ws-notes ws))
+                                   :model model
+                                   :system "You build a Lisp solution incrementally with spec/verify/defun/done. No prose."
+                                   :params (list :temp 0.4))
+                            (error () nil))))
+                 (and raw (%read-all-sexprs raw pkg))))
+             (expand (cp)
+               (let ((out '()))
+                 (block gen
+                   (dotimes (k branch)
+                     (workspace-restore ws cp)          ; TELEPORT to parent before each branch
+                     (dolist (s (turn)) (%build-step ws s :verbose verbose))
+                     (push (workspace-checkpoint ws) out)
+                     (when (>= (fn-score) 1.0) (return-from gen))))  ; solved -> stop spending calls
+                 (nreverse out))))
+      (unwind-protect
+           (progn
+             (%build-install-tools ws env)
+             (let ((root (workspace-checkpoint ws)))
+               (multiple-value-bind (node ok)
+                   (ecase policy
+                     (:best-first (tree-search root :expand #'expand :score #'score :goalp #'goalp
+                                                     :beam beam :branch branch :budget budget
+                                                     :max-depth max-depth :test 'eq :verbose verbose))
+                     (:mcts (mcts root :expand #'expand :score #'score :goalp #'goalp
+                                       :branch branch :budget budget :max-depth max-depth
+                                       :c c :test 'eq :verbose verbose)))
+                 (workspace-restore ws (snode-state node))   ; leave the winner installed for the report
+                 (when verbose (format t "~&[search-build/~(~A~)] best score ~,2F~%" policy (fn-score)))
+                 (values (and ok t) (fn-score) (reverse (build-ws-forms ws))))))
+        (%build-teardown ws)))))

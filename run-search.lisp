@@ -46,7 +46,18 @@
                        "(defun sq (x) (times x x))"   ; 25,9  -> 1.0 GOAL
                        "(defun sq (x) 0)")))          ; filler
     (chk "search-skill teleports to the winner" (and ok (= score 1.0)) t)
-    (format t "      final SKILL: ~A~%" src)))
+    (format t "      final SKILL: ~A~%" src))
+  ;; MUTABLE-STATE teleport: build-agent's workspace is live fdefinitions, so a branch must
+  ;; checkpoint + restore. Define foo->+1, snapshot, mutate (foo->+100, add bar), restore -> back.
+  (let ((ws (make-build-ws :pkg (find-package :ailisp))))
+    (%build-step ws '(defun demofoo (x) (+ x 1)))
+    (let ((cp (workspace-checkpoint ws)))
+      (%build-step ws '(defun demofoo (x) (+ x 100)))
+      (%build-step ws '(defun demobar (x) x))
+      (workspace-restore ws cp)                     ; teleport back to the snapshot
+      (chk "checkpoint teleport restores the workspace"
+           (list (funcall (symbol-function 'demofoo) 1) (and (fboundp 'demobar) t)) (list 2 nil))
+      (when (fboundp 'demofoo) (fmakunbound 'demofoo)))))
 
 ;;; ---- live: write-skill (linear) vs search-skill (tree), same task, same model ----
 (setf *model* (make-openai-model))

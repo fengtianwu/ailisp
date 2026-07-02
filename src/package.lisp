@@ -22,6 +22,8 @@
    #:*hiai-url* #:fetch-skill #:apply-skills
    ;; agent
    #:tool #:make-tool #:tool-name #:tool-fn #:tool-doc #:react #:build-agent
+   ;; build-agent workspace as a checkpointable value (mutable-state teleport)
+   #:build-ws #:make-build-ws #:workspace-checkpoint #:workspace-restore
    ;; patterns (compositions of the cell)
    #:reflect #:vote #:%majority #:llm-tool #:solve
    ;; rag (pillar 2 via hiai-core KB)
@@ -47,7 +49,7 @@
    #:skill-verify #:write-skill #:skill-lint-tool #:skill-run-tool
    ;; search: promote the trajectory to a navigable search graph (verifier = score)
    #:tree-search #:snode #:make-snode #:snode-state #:snode-score #:snode-parent #:snode-depth
-   #:snode-path #:skill-score #:search-skill #:mcts
+   #:snode-path #:skill-score #:search-skill #:mcts #:search-build
    ;; bench (M7)
    #:*last-usage* #:*bench-tasks* #:run-bench #:run-task
    #:parse-call-sexpr #:parse-call-json #:grade-call #:arg=
