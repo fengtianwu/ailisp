@@ -389,8 +389,9 @@
    returns best on give-up. :skill drives SEARCH-SKILL with a mock model (scripted SKILL) using
    the interpreter as the graded score, under :policy :best-first|:mcts. :checkpoint asserts the
    mutable-state teleport primitive (workspace-checkpoint/restore round-trips the live image).
-   :build drives SEARCH-BUILD (mock model), which teleports between build-agent workspaces --
-   all deterministic, no network."
+   :build drives SEARCH-BUILD (mock model), which teleports between build-agent workspaces.
+   :judge asserts LLM-JUDGE grounds+normalizes a model rating; :answer drives SEARCH-ANSWER
+   (best-first over free text scored by the judge) -- all deterministic, no network."
   (ecase (getf c :kind)
     (:toy
      (let* ((target (getf c :target)) (lo (getf c :lo)) (hi (getf c :hi))
@@ -464,7 +465,30 @@
            ((and (member :calls c) (not (eql (ailisp:mock-model-calls m) (getf c :calls))))
             (values nil (format nil "calls ~A != ~A" (ailisp:mock-model-calls m) (getf c :calls))))
            ((and ok (< score 1.0)) (values nil (format nil "ok but score ~,2F < 1.0" score)))
-           (t (values t nil))))))))
+           (t (values t nil))))))
+    ;; llm-judge: the PROBABILISTIC score -- assert the model rating is grounded + normalized.
+    (:judge
+     (let* ((m (ailisp:make-mock-model :responses (getf c :script)))
+            (got (ailisp:llm-judge (getf c :task) (getf c :answer)
+                                   :model m :scale (or (getf c :scale) 10))))
+       (if (< (abs (- got (getf c :expect-score))) 0.01) (values t nil)
+           (values nil (format nil "score ~,3F != ~,3F" got (getf c :expect-score))))))
+    ;; search-answer: NON-verifiable search -- best-first over free text, llm-judge as the score.
+    (:answer
+     (let ((m (ailisp:make-mock-model :responses (getf c :script))))
+       (multiple-value-bind (ans ok score)
+           (ailisp:search-answer (getf c :task) :model m
+                                 :branch (or (getf c :branch) 2) :beam (or (getf c :beam) 2)
+                                 :budget (or (getf c :budget) 4) :max-depth (or (getf c :max-depth) 2)
+                                 :threshold (or (getf c :threshold) 0.9))
+         (declare (ignorable score))
+         (cond ((not (equal ans (getf c :expect-answer)))
+                (values nil (format nil "answer ~S != ~S" ans (getf c :expect-answer))))
+               ((and (member :calls c) (not (eql (ailisp:mock-model-calls m) (getf c :calls))))
+                (values nil (format nil "calls ~A != ~A" (ailisp:mock-model-calls m) (getf c :calls))))
+               ((and (member :expect-ok c) (not (eq (and ok t) (and (getf c :expect-ok) t))))
+                (values nil (format nil "ok ~S != ~S" (and ok t) (getf c :expect-ok))))
+               (t (values t nil))))))))
 
 (defun run-case (testset-name c)
   (cond ((string-equal testset-name "GRADE")           (run-grade-case c))

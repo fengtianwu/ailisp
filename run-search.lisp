@@ -9,8 +9,8 @@
 (setf sb-impl::*default-external-format* :utf-8)
 (let ((root (or *load-pathname* *default-pathname-defaults*)))
   (dolist (f '("src/package" "src/reader" "src/schema" "src/model" "src/skills"
-               "src/ai" "src/safe-eval" "src/agent" "src/build" "src/skill" "src/skill-agent"
-               "src/search"))
+               "src/ai" "src/safe-eval" "src/agent" "src/build" "src/patterns"
+               "src/skill" "src/skill-agent" "src/search"))
     (handler-bind ((warning #'muffle-warning))
       (load (merge-pathnames (concatenate 'string f ".lisp") root)))))
 (in-package :ailisp)
@@ -47,6 +47,14 @@
                        "(defun sq (x) 0)")))          ; filler
     (chk "search-skill teleports to the winner" (and ok (= score 1.0)) t)
     (format t "      final SKILL: ~A~%" src))
+  ;; PROBABILISTIC score (non-verifiable tasks): llm-judge grounds a model rating to a number.
+  (chk "llm-judge normalizes a rating (8/10 -> 0.8)"
+       (< (abs (- (llm-judge "greet the user warmly" "Hello!" :scale 10
+                             :model (make-mock-model
+                                     :responses (list "{\"score\": 8, \"reason\": \"warm\"}")))
+                  0.8))
+          0.01)
+       t)
   ;; MUTABLE-STATE teleport: build-agent's workspace is live fdefinitions, so a branch must
   ;; checkpoint + restore. Define foo->+1, snapshot, mutate (foo->+100, add bar), restore -> back.
   (let ((ws (make-build-ws :pkg (find-package :ailisp))))
@@ -103,3 +111,10 @@
       (format t "~12@A | ~6A ~5A | ~9A ~5,2F ~5A | ~9A ~5,2F ~5A~%"
               name (if wok "OK" "fail") wcalls
               (if bok "OK" "fail") bscore bcalls (if mok "OK" "fail") mscore mcalls))))
+
+;;; ---- live: search-answer on a NON-verifiable/open task -- the model JUDGES instead of a verifier
+(format t "~%~%[live: search-answer on an open task -- no verifier, llm-judge is the score]~%")
+(let ((task "Write a punchy one-sentence tagline for a homoiconic Lisp that treats LLMs as first-class functions."))
+  (multiple-value-bind (ans ok score)
+      (search-answer task :branch 2 :beam 2 :budget 6 :max-depth 2 :threshold 0.9)
+    (format t "  best answer (judge ~,2F~:[~; -- cleared threshold~]):~%    ~A~%" score ok ans)))

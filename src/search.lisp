@@ -321,3 +321,70 @@
                  (when verbose (format t "~&[search-build/~(~A~)] best score ~,2F~%" policy (fn-score)))
                  (values (and ok t) (fn-score) (reverse (build-ws-forms ws))))))
         (%build-teardown ws)))))
+
+;;; ---- llm-judge: a PROBABILISTIC score for NON-verifiable tasks -------------------------------
+;;; Where there is no deterministic verifier (open/creative tasks), the score itself must come
+;;; from the model: llm-judge = b2s(:into number) . llm . s2b -- the judge's rating grounded to a
+;;; number via schema. This is the honest counterpart to skill-score/skill verifier: the number
+;;; is a SAMPLE, not a proof, so it is NOISY and can mislead the search. Consequences: goalp uses
+;;; a THRESHOLD (never ==1.0), scores are MEMOIZED per candidate (one judge call each, and stable
+;;; within a search), and BUDGET bounds the spend. See three-primitives: s2b tolerates b, but the
+;;; number is still grounded symbolically at the b2s boundary.
+
+(defun llm-judge (task answer &key (model *model*) rubric (scale 10))
+  "Score ANSWER for TASK on 0.0..1.0 using the model as judge (b2s :into number . llm . s2b).
+   Returns 0.0 on any error. NOISY -- treat as a heuristic, not a verifier."
+  (let* ((prompt (format nil "Task: ~A~@[~%Rubric: ~A~]~%~%Candidate answer:~%~A~%~%~
+Rate how well the candidate satisfies the task, as an INTEGER from 0 to ~A ~
+(0 = terrible, ~A = perfect). Give the score and a one-line reason."
+                         task rubric answer scale scale))
+         (r (handler-case
+                (ai prompt :model model
+                    :system "You are a strict, consistent evaluator. Output only the JSON object."
+                    :into '(%map :score int :reason string) :params '(:temp 0))
+              (error () nil)))
+         (s (and r (%get r :score))))
+    (if s (max 0.0 (min 1.0 (/ (float s) scale))) 0.0)))
+
+(defun %answer-candidate (task current model temp)
+  "One model shot -> a candidate answer string (trimmed), or NIL. Fresh answer if CURRENT is NIL,
+   else an improvement of CURRENT."
+  (let ((raw (handler-case
+                 (llm (if current
+                          (format nil "Task: ~A~%~%Current answer:~%~A~%~%Write an IMPROVED answer. Output only the answer." task current)
+                          (format nil "Task: ~A~%~%Write the best answer. Output only the answer." task))
+                      :model model :params (list :temp temp))
+               (error () nil))))
+    (and raw (let ((s (string-trim '(#\Space #\Newline #\Tab #\Return) raw)))
+               (and (plusp (length s)) s)))))
+
+(defun search-answer (task &key (model *model*) rubric (branch 3) (beam 3) (budget 8)
+                                (max-depth 2) (threshold 0.9) (scale 10)
+                                (policy :best-first) (c 1.414d0) verbose)
+  "Search over free-text ANSWERS to a NON-verifiable/open TASK, scored by LLM-JUDGE instead of a
+   deterministic verifier -- the same tree-search/mcts planners, a probabilistic score. Generates
+   candidates (branch via temperature), judges each, and refines the best. Because the judge is
+   noisy, GOAL = judge score >= THRESHOLD (not ==1.0), scores are MEMOIZED (one judge call per
+   candidate), and BUDGET bounds the spend. Returns (values ANSWER ok judge-score)."
+  (let* ((cache (make-hash-table :test 'equal))
+         (score (lambda (state)
+                  (cond ((null state) 0.0)
+                        ((nth-value 1 (gethash state cache)) (gethash state cache))
+                        (t (setf (gethash state cache)
+                                 (llm-judge task state :model model :rubric rubric :scale scale))))))
+         (goalp (lambda (state) (and state (>= (funcall score state) threshold))))
+         (expand (lambda (state)
+                   (let ((out '()))
+                     (dotimes (k branch (nreverse out))
+                       (let ((cand (%answer-candidate task state model (min 0.9 (+ 0.3 (* 0.3 k))))))
+                         (when cand (pushnew cand out :test 'equal))))))))
+    (multiple-value-bind (node ok)
+        (ecase policy
+          (:best-first (tree-search nil :expand expand :score score :goalp goalp
+                                        :beam beam :branch branch :budget budget
+                                        :max-depth max-depth :test 'equal :verbose verbose))
+          (:mcts (mcts nil :expand expand :score score :goalp goalp
+                           :branch branch :budget budget :max-depth max-depth
+                           :c c :test 'equal :verbose verbose)))
+      (when verbose (format t "~&[search-answer/~(~A~)] best judge score ~,2F~%" policy (snode-score node)))
+      (values (snode-state node) (and ok t) (snode-score node)))))

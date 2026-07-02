@@ -106,4 +106,22 @@
    :tools ((mul . (lambda (a b) (* a b))))
    :branch 2 :budget 6
    :script ("(defun sq (x) (mul x x))")       ; 25,9 -> 1.0 GOAL, 1 call
-   :expect-ok t :calls 1))
+   :expect-ok t :calls 1)
+
+  ;; ---- llm-judge: a PROBABILISTIC score for NON-verifiable/open tasks ----
+  ;; the judge grounds a model rating to a number and normalizes by the scale: 8/10 -> 0.8.
+  (:name "judge-normalizes-score" :kind :judge
+   :task "greet the user warmly" :answer "Hello, so wonderful to see you!"
+   :scale 10 :script ("{\"score\": 8, \"reason\": \"warm and friendly\"}")
+   :expect-score 0.8)
+
+  ;; search over free text with the judge as score: two candidates generated (2 calls), each
+  ;; judged (2 memoized calls); the higher-rated one clears the threshold and is returned. = 4.
+  (:name "answer-search-picks-higher-judged" :kind :answer
+   :task "write a friendly greeting"
+   :branch 2 :beam 2 :budget 4 :threshold 0.9
+   :script ("Meh, hi."                                 ; candidate A (generation)
+            "Hello, wonderful to see you today!"       ; candidate B (generation)
+            "{\"score\": 3, \"reason\": \"flat\"}"     ; judge A -> 0.3
+            "{\"score\": 9, \"reason\": \"warm\"}")    ; judge B -> 0.9 >= threshold, GOAL
+   :expect-answer "Hello, wonderful to see you today!" :expect-ok t :calls 4))
