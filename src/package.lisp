@@ -45,6 +45,9 @@
    ;; Cadence SKILL sublanguage + a SKILL-writing agent (write -> lint -> run -> self-heal)
    #:skill-run #:skill-lint #:skill-defs #:skill-read-all #:skill-error #:skill-intern
    #:skill-verify #:write-skill #:skill-lint-tool #:skill-run-tool
+   ;; search: promote the trajectory to a navigable search graph (verifier = score)
+   #:tree-search #:snode #:make-snode #:snode-state #:snode-score #:snode-parent #:snode-depth
+   #:snode-path #:skill-score #:search-skill
    ;; bench (M7)
    #:*last-usage* #:*bench-tasks* #:run-bench #:run-task
    #:parse-call-sexpr #:parse-call-json #:grade-call #:arg=

@@ -19,7 +19,8 @@
     "tests/unit/nl.cases.lisp"
     "tests/unit/replay.cases.lisp"
     "tests/unit/mcp.cases.lisp"
-    "tests/unit/skill.cases.lisp"))
+    "tests/unit/skill.cases.lisp"
+    "tests/unit/search.cases.lisp"))
 
 (defun read-cases-file (path)
   "Return the list of (deftestset NAME case...) forms in PATH, read as data."
@@ -382,6 +383,50 @@
             (values nil "returned source fails its own examples"))
            (t (values t nil))))))))
 
+(defun run-search-case (c)
+  "Assert the search-graph layer. :toy drives the pure TREE-SEARCH combinator over integers
+   (no model) -- best-first climbs -(|x-target|) to the goal, visited-prunes, returns best on
+   give-up. :skill drives SEARCH-SKILL with a mock model (scripted SKILL) using the interpreter
+   as the graded score -- all deterministic, no network."
+  (ecase (getf c :kind)
+    (:toy
+     (let ((target (getf c :target)) (lo (getf c :lo)) (hi (getf c :hi)))
+       (multiple-value-bind (node goal)
+           (ailisp:tree-search
+             (getf c :start)
+             :expand (lambda (x) (remove-if-not (lambda (y) (and (>= y lo) (<= y hi)))
+                                                (list (1- x) (1+ x) (* 2 x))))
+             :score (lambda (x) (- (abs (- x target))))
+             :goalp (lambda (x) (= x target))
+             :beam (getf c :beam) :branch 3
+             :budget (or (getf c :budget) 100) :max-depth (or (getf c :max-depth) 40)
+             :test 'eql)
+         (cond ((not (eq (and goal t) (and (getf c :expect-goal) t)))
+                (values nil (format nil "goal ~S != ~S" (and goal t) (getf c :expect-goal))))
+               ((and (member :expect-state c)
+                     (not (eql (ailisp:snode-state node) (getf c :expect-state))))
+                (values nil (format nil "state ~S != ~S"
+                                    (ailisp:snode-state node) (getf c :expect-state))))
+               (t (values t nil))))))
+    (:skill
+     (let ((m (ailisp:make-mock-model :responses (getf c :script))))
+       (multiple-value-bind (src ok score)
+           (ailisp:search-skill (getf c :desc) :name (getf c :proc) :params (getf c :params)
+                                :examples (getf c :examples) :model m
+                                :branch (or (getf c :branch) 2) :beam (or (getf c :beam) 2)
+                                :budget (or (getf c :budget) 6) :max-depth (or (getf c :max-depth) 3))
+         (cond
+           ((not (eq (and ok t) (and (getf c :expect-ok) t)))
+            (values nil (format nil "ok ~S != ~S" (and ok t) (and (getf c :expect-ok) t))))
+           ((and (member :calls c) (not (eql (ailisp:mock-model-calls m) (getf c :calls))))
+            (values nil (format nil "calls ~A != ~A" (ailisp:mock-model-calls m) (getf c :calls))))
+           ((and ok (< score 1.0))
+            (values nil (format nil "ok but score ~,2F < 1.0" score)))
+           ((and ok (getf c :examples)
+                 (ailisp:skill-verify src (ailisp:skill-intern (getf c :proc)) (getf c :examples)))
+            (values nil "returned source fails its own examples"))
+           (t (values t nil))))))))
+
 (defun run-case (testset-name c)
   (cond ((string-equal testset-name "GRADE")           (run-grade-case c))
         ((string-equal testset-name "BFCL-GRADE")      (run-bfcl-grade-case c))
@@ -401,6 +446,7 @@
         ((string-equal testset-name "REPLAY")          (run-replay-case c))
         ((string-equal testset-name "MCP")             (run-mcp-case c))
         ((string-equal testset-name "SKILL")           (run-skill-case c))
+        ((string-equal testset-name "SEARCH")          (run-search-case c))
         (t (values nil (format nil "unknown testset ~A" testset-name)))))
 
 (defun run-all ()
