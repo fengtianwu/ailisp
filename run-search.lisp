@@ -1,7 +1,8 @@
 ;;;; The search-graph layer (src/search.lisp): promote the agent trajectory to a navigable SEARCH
 ;;;; and let a VERIFIER be the score. Head-to-head with the linear agent on the SAME task/model:
-;;;;   write-skill  = linear rising-temp retry chain (one path, extend from "here")
-;;;;   search-skill = best-first/beam TREE search; teleport to the best-scoring branch so far
+;;;;   write-skill         = linear rising-temp retry chain (one path, extend from "here")
+;;;;   search-skill :best-first = best-first/beam TREE search; teleport to the best branch so far
+;;;;   search-skill :mcts       = MCTS with UCT selection (explore/exploit; escapes a local optimum)
 ;;;; The offline self-check needs no model; the live section needs hiai-core (a code model is best;
 ;;;; see run-skill.lisp). We count model calls per approach so the cost/benefit is explicit.
 ;;;;   sbcl --script run-search.lisp
@@ -63,22 +64,31 @@
     (destructuring-bind (desc name params examples) task
       (format t "~&~%--- ~A~%" name)
       (let ((cw (make-count-model :inner *model*))
-            (cs (make-count-model :inner *model*)))
+            (cb (make-count-model :inner *model*))
+            (cm (make-count-model :inner *model*)))
         (multiple-value-bind (wsrc wok) (write-skill desc :name name :params params
                                                      :examples examples :model cw :max-tries 4)
-          (multiple-value-bind (ssrc sok sscore)
-              (search-skill desc :name name :params params :examples examples :model cs
-                            :branch 2 :beam 2 :budget 8 :max-depth 4)
-            (format t "  write-skill : ~A in ~A call(s)~%      ~A~%"
-                    (if wok "OK  " "FAIL") (count-model-n cw) wsrc)
-            (format t "  search-skill: ~A (score ~,2F) in ~A call(s)~%      ~A~%"
-                    (if sok "OK  " "FAIL") sscore (count-model-n cs) ssrc)
-            (push (list name wok (count-model-n cw) sok sscore (count-model-n cs)) rows))))))
+          (multiple-value-bind (bsrc bok bscore)
+              (search-skill desc :name name :params params :examples examples :model cb
+                            :policy :best-first :branch 2 :beam 2 :budget 8 :max-depth 4)
+            (multiple-value-bind (msrc mok mscore)
+                (search-skill desc :name name :params params :examples examples :model cm
+                              :policy :mcts :branch 2 :budget 8 :max-depth 4)
+              (format t "  write-skill      : ~A in ~A call(s)~%      ~A~%"
+                      (if wok "OK  " "FAIL") (count-model-n cw) wsrc)
+              (format t "  search (best-1st): ~A (score ~,2F) in ~A call(s)~%      ~A~%"
+                      (if bok "OK  " "FAIL") bscore (count-model-n cb) bsrc)
+              (format t "  search (mcts/uct): ~A (score ~,2F) in ~A call(s)~%      ~A~%"
+                      (if mok "OK  " "FAIL") mscore (count-model-n cm) msrc)
+              (push (list name wok (count-model-n cw)
+                          bok bscore (count-model-n cb) mok mscore (count-model-n cm)) rows)))))))
   ;; a compact scoreboard so the trade-off (linear cost vs search robustness) is explicit
-  (format t "~%~%========================= scoreboard =========================~%")
-  (format t "~12@A | ~8A ~5A | ~8A ~5A ~5A~%" "task" "write" "calls" "search" "score" "calls")
-  (format t "-------------------------------------------------------------~%")
+  (format t "~%~%===================================== scoreboard =====================================~%")
+  (format t "~12@A | ~6A ~5A | ~9A ~5A ~5A | ~9A ~5A ~5A~%"
+          "task" "write" "calls" "best-first" "score" "calls" "mcts/uct" "score" "calls")
+  (format t "--------------------------------------------------------------------------------------~%")
   (dolist (r (nreverse rows))
-    (destructuring-bind (name wok wcalls sok sscore scalls) r
-      (format t "~12@A | ~8A ~5A | ~8A ~5,2F ~5A~%"
-              name (if wok "OK" "fail") wcalls (if sok "OK" "fail") sscore scalls))))
+    (destructuring-bind (name wok wcalls bok bscore bcalls mok mscore mcalls) r
+      (format t "~12@A | ~6A ~5A | ~9A ~5,2F ~5A | ~9A ~5,2F ~5A~%"
+              name (if wok "OK" "fail") wcalls
+              (if bok "OK" "fail") bscore bcalls (if mok "OK" "fail") mscore mcalls))))

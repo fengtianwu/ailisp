@@ -78,7 +78,7 @@ react / rag / plan-execute                                        ← agentic �
 
 ## 现状
 
-- **`make test` 162/162**(纯 SBCL,无网络,确定性);**`make ci`** = `test` + `replay`(录制的 live agent 流离线复现,全程无网络)。
+- **`make test` 166/166**(纯 SBCL,无网络,确定性);**`make ci`** = `test` + `replay`(录制的 live agent 流离线复现,全程无网络)。
 - 实现:`src/`(reader / schema / safe-eval / repel / fallback / parallel / nl / replay / mcp / skill(+skill-agent) / search / model / ai / agent / rag / build / patterns / wolfram / sql / intent / skills),`bench/`(BFCL + 组合性基准),`tests/`(含 `fixtures/`),`examples/`(MCP 示例 server),`demo.lisp` / `showcase.lisp` / `repl.lisp`。
 - live 路径接 hiai-core 的本地模型(OpenAI 兼容,`:8080`)。
 
@@ -99,7 +99,7 @@ react / rag / plan-execute                                        ← agentic �
 需要 [hiai-core](../hiai-core) 在跑并加载了 chat 模型(代码模型如 qwen-coder-next 最适合 plan-execute)。
 
 ```sh
-make test        # 确定性测试集 162/162(无需模型)
+make test        # 确定性测试集 166/166(无需模型)
 make ci          # 离线 CI 闸:test + replay(录制的 live agent 流离线复现,无网络)
 make showcase    # 全套玩法巡演:三原语 / 各 agent 模式 / 多语言 eval(可编辑各段)
 make demo        # 4 个快例:抽取 / 分类 / plan-execute / ReAct
@@ -122,7 +122,7 @@ make record      # 录制 live agent 流(react/build/solve)的 chat fixtures(需
 make replay      # 离线复现录制的 live 流并断言一致(CI 用,无需模型)
 make mcp         # MCP 外部 tool 源:连 stdio MCP server→工具包成 ailisp tool→react(离线自检 + live)
 make skill       # 一个真实 agent:用 ailisp 写 Cadence SKILL(写→lint→跑样例→自愈,离线自检 + live)
-make search      # 搜索图层:write-skill(线性重试)vs search-skill(best-first 树,验证器当分)对比,数调用次数
+make search      # 搜索图层:write-skill(线性重试)vs search-skill(best-first / MCTS-UCT 树,验证器当分)三方对比,数调用次数
 ```
 
 小试(`make repl` 里):

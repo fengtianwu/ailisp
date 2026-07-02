@@ -51,4 +51,34 @@
    :branch 1 :beam 1 :budget 2
    :script ("(defun sq (x) (plus x 20))"      ; 25,23 -> 0.5
             "(defun sq (x) (times x 5))")     ; 25,15 -> 0.5  (different string, still < 1.0)
-   :expect-ok nil :calls 2))
+   :expect-ok nil :calls 2)
+
+  ;; ---- MCTS/UCT policy: same interface, explore-exploit instead of greedy best-first ----
+  ;; pure combinator under UCT: unvisited children score +inf so each is tried once, then it
+  ;; exploits toward the target. Deterministic (deterministic score/expand + stable tie-break).
+  (:name "mcts-toy-reaches-target" :kind :toy :policy :mcts
+   :start 1 :target 10 :lo 0 :hi 64 :budget 60
+   :expect-goal t :expect-state 10)
+
+  ;; UCT give-up: target unreachable under the ceiling -> no goal, returns the best node (8).
+  (:name "mcts-toy-gives-up-returns-best" :kind :toy :policy :mcts
+   :start 1 :target 100 :lo 0 :hi 8 :budget 40
+   :expect-goal nil :expect-state 8)
+
+  ;; MCTS search-skill, first-branch hit: root expansion's 2nd candidate is correct -> 2 calls.
+  (:name "mcts-skill-first-branch-hits" :kind :skill :policy :mcts
+   :desc "square of x" :proc "sq" :params (x) :examples (((5) 25) ((3) 9))
+   :branch 2 :budget 6
+   :script ("(defun sq (x) (times x 2))"      ; 10,6  -> 0.0
+            "(defun sq (x) (times x x))")     ; 25,9  -> 2/2 GOAL
+   :expect-ok t :calls 2)
+
+  ;; MCTS over 2 iterations: root -> two non-goal children (2 calls); SELECT one by UCT and
+  ;; expand it -> the correct program (short-circuits on the 1st sub-candidate). = 3 calls.
+  (:name "mcts-skill-two-iterations" :kind :skill :policy :mcts
+   :desc "square of x" :proc "sq" :params (x) :examples (((5) 25) ((3) 9))
+   :branch 2 :budget 6
+   :script ("(defun sq (x) (plus x 20))"      ; 25,23 -> 0.5
+            "(defun sq (x) (plus x 1))"       ; 6,4   -> 0.0
+            "(defun sq (x) (times x x))")     ; 25,9  -> 2/2 GOAL (2nd iteration)
+   :expect-ok t :calls 3))

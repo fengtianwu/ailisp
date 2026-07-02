@@ -89,6 +89,95 @@
                 (setf frontier (append kids frontier))
                 (when beam (setf frontier (%top-n frontier beam))))))))))
 
+;;; ---- MCTS / UCT: explore-exploit instead of pure greedy best-first --------------------------
+;;; Same interface as TREE-SEARCH (init/expand/score/goalp/budget/max-depth/canon), different
+;;; policy. Because our value function (the verifier) is DETERMINISTIC, no random rollout is
+;;; needed: a node's "simulation result" is just its SCORE. Each iteration SELECTs a leaf by
+;;; descending argmax UCT, EXPANDs it once, and BACKPROPs the best child reward up the path.
+;;; UCT(child) = mean(child) + c*sqrt(ln(N_parent)/N_child); an unvisited child scores +inf, so
+;;; every sibling is tried once before the search starts exploiting the high-value ones. This
+;;; escapes the local optimum a pure best-first can get pinned to (a plausible-but-wrong branch).
+
+(defstruct mnode
+  state parent (depth 0)
+  (children nil) (expanded nil)   ; one-shot expansion: all BRANCH children made at once
+  (visits 0) (value 0.0d0)        ; UCT stats: N and cumulative reward W
+  (reward 0.0d0) (terminal nil))  ; this node's own verifier score; terminal = goal or max-depth
+
+(defun %uct (child parent-visits c)
+  (let ((n (mnode-visits child)))
+    (if (zerop n)
+        most-positive-double-float                     ; explore every child at least once
+        (+ (/ (mnode-value child) n)                   ; exploitation: mean reward
+           (* c (sqrt (/ (log (max 1 parent-visits)) n)))))))  ; exploration bonus
+
+(defun %best-uct (children parent-visits c)
+  (let* ((best (first children)) (bu (%uct best parent-visits c)))
+    (dolist (ch (rest children) best)
+      (let ((u (%uct ch parent-visits c)))
+        (when (> u bu) (setf best ch bu u))))))
+
+(defun %mnode->snode (m)
+  "Project an mnode (+ its parent chain) onto an snode so callers get a uniform result type."
+  (and m (make-snode :state (mnode-state m) :score (mnode-reward m)
+                     :depth (mnode-depth m) :parent (%mnode->snode (mnode-parent m)))))
+
+(defun mcts (init &key expand score goalp
+                       (budget 24) (max-depth 6) (c 1.414d0)
+                       (branch 3) (test 'equal) canon verbose)
+  "Monte-Carlo Tree Search with UCT selection over IMMUTABLE states; reward = SCORE (the
+   verifier). BUDGET = max EXPAND rounds (as in TREE-SEARCH). Returns (values BEST-SNODE
+   goal-reached-p visited-count) -- same shape as TREE-SEARCH, so callers dispatch freely."
+  (let* ((score (or score (constantly 0)))
+         (canon (or canon #'identity))
+         (seen (make-hash-table :test test))
+         (root (make-mnode :state init :reward (funcall score init)
+                           :terminal (and goalp (funcall goalp init) t)))
+         (best root) (visited 1) (expansions 0) (iters 0)
+         (cap (* 8 (max 1 budget))))                    ; safety bound on no-op re-selections
+    (setf (gethash (funcall canon init) seen) t)
+    (if (mnode-terminal root)
+        (values (%mnode->snode root) t visited)
+        (loop
+          (when (or (>= expansions budget) (>= iters cap))
+            (return (values (%mnode->snode best) nil visited)))
+          (incf iters)
+          ;; SELECT: descend argmax-UCT to a leaf (unexpanded, terminal, or dead-end).
+          (let ((node root))
+            (loop while (and (mnode-expanded node) (mnode-children node)
+                             (not (mnode-terminal node)))
+                  do (setf node (%best-uct (mnode-children node) (mnode-visits node) c)))
+            (let ((reward (mnode-reward node)) (goal nil))
+              ;; EXPAND the leaf (one round of candidates), scoring each child.
+              (when (and (not (mnode-expanded node)) (not (mnode-terminal node))
+                         (< (mnode-depth node) max-depth))
+                (setf (mnode-expanded node) t)
+                (incf expansions)
+                (when verbose (format t "~&[mcts] expand depth ~A reward ~,2F~%"
+                                      (mnode-depth node) (mnode-reward node)))
+                (let ((kids '()))
+                  (dolist (cs (%take branch (funcall expand (mnode-state node))))
+                    (let ((key (funcall canon cs)))
+                      (unless (gethash key seen)
+                        (setf (gethash key seen) t)
+                        (incf visited)
+                        (let* ((r (funcall score cs))
+                               (g (and goalp (funcall goalp cs) t))
+                               (kid (make-mnode :state cs :reward r :parent node
+                                                :depth (1+ (mnode-depth node))
+                                                :terminal (or g (>= (1+ (mnode-depth node)) max-depth)))))
+                          (when (> r (mnode-reward best)) (setf best kid))
+                          (when g (setf goal kid))
+                          (push kid kids)
+                          (setf reward (max reward r))))))
+                  (setf (mnode-children node) (nreverse kids))))
+              ;; BACKPROP the reward up the selected path.
+              (let ((n node))
+                (loop while n do (incf (mnode-visits n))
+                                 (incf (mnode-value n) reward)
+                                 (setf n (mnode-parent n))))
+              (when goal (return (values (%mnode->snode goal) t visited)))))))))
+
 ;;; ---- the verifier as a graded score (SKILL) ----------------------------------------------
 
 (defun skill-score (source name examples)
@@ -123,13 +212,14 @@
 
 (defun search-skill (description &key (name "myProc") params examples
                                       (model *model*) (branch 3) (beam 3)
-                                      (budget 12) (max-depth 3) verbose)
+                                      (budget 12) (max-depth 3) (policy :best-first) (c 1.414d0)
+                                      verbose)
   "Like WRITE-SKILL but a TREE search instead of a linear retry chain: grow candidate SKILL
    programs and let the VERIFIER (fraction of EXAMPLES passing, via SKILL-SCORE) be the search
-   score. Best-first/beam always expands the best-scoring candidate so far (teleport), so a
-   promising-but-wrong branch is refined rather than a fresh line each time. A node's state is
-   just the SKILL source string (immutable) -> the frontier IS the search tree, teleport is free.
-   Returns (values SKILL-SOURCE ok score)."
+   score. A node's state is just the SKILL source string (immutable) -> the frontier IS the
+   search tree, teleport is free. POLICY selects the planner: :best-first (greedy, uses BEAM)
+   or :mcts (UCT explore/exploit with constant C -- escapes a plausible-but-wrong local optimum
+   the greedy policy can get pinned to). Returns (values SKILL-SOURCE ok score)."
   (let* ((examples (%clean-examples examples))
          (namesym (skill-intern name))
          (score (lambda (state) (if (null state) 0.0 (skill-score state namesym examples))))
@@ -155,8 +245,12 @@
                              (when (>= (funcall score cand) 1.0) (return-from gen))))))
                      (nreverse out)))))
     (multiple-value-bind (node ok)
-        (tree-search nil :expand expand :score score :goalp goalp
-                         :beam beam :branch branch :budget budget :max-depth max-depth
-                         :test 'equal :verbose verbose)
-      (when verbose (format t "~&[search-skill] best score ~,2F~%" (snode-score node)))
+        (ecase policy
+          (:best-first (tree-search nil :expand expand :score score :goalp goalp
+                                        :beam beam :branch branch :budget budget
+                                        :max-depth max-depth :test 'equal :verbose verbose))
+          (:mcts (mcts nil :expand expand :score score :goalp goalp
+                           :branch branch :budget budget :max-depth max-depth
+                           :c c :test 'equal :verbose verbose)))
+      (when verbose (format t "~&[search-skill/~(~A~)] best score ~,2F~%" policy (snode-score node)))
       (values (snode-state node) (and ok t) (snode-score node)))))

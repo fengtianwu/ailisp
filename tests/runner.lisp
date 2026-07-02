@@ -384,23 +384,27 @@
            (t (values t nil))))))))
 
 (defun run-search-case (c)
-  "Assert the search-graph layer. :toy drives the pure TREE-SEARCH combinator over integers
-   (no model) -- best-first climbs -(|x-target|) to the goal, visited-prunes, returns best on
-   give-up. :skill drives SEARCH-SKILL with a mock model (scripted SKILL) using the interpreter
-   as the graded score -- all deterministic, no network."
+  "Assert the search-graph layer. :toy drives the pure combinator over integers (no model) --
+   :policy :mcts uses UCT, else best-first climbs -(|x-target|) to the goal, visited-prunes,
+   returns best on give-up. :skill drives SEARCH-SKILL with a mock model (scripted SKILL) using
+   the interpreter as the graded score, under :policy :best-first|:mcts -- all deterministic."
   (ecase (getf c :kind)
     (:toy
-     (let ((target (getf c :target)) (lo (getf c :lo)) (hi (getf c :hi)))
+     (let* ((target (getf c :target)) (lo (getf c :lo)) (hi (getf c :hi))
+            (expand (lambda (x) (remove-if-not (lambda (y) (and (>= y lo) (<= y hi)))
+                                               (list (1- x) (1+ x) (* 2 x)))))
+            (score (lambda (x) (- (abs (- x target)))))
+            (goalp (lambda (x) (= x target))))
        (multiple-value-bind (node goal)
-           (ailisp:tree-search
-             (getf c :start)
-             :expand (lambda (x) (remove-if-not (lambda (y) (and (>= y lo) (<= y hi)))
-                                                (list (1- x) (1+ x) (* 2 x))))
-             :score (lambda (x) (- (abs (- x target))))
-             :goalp (lambda (x) (= x target))
-             :beam (getf c :beam) :branch 3
-             :budget (or (getf c :budget) 100) :max-depth (or (getf c :max-depth) 40)
-             :test 'eql)
+           (if (eq (getf c :policy) :mcts)
+               (ailisp:mcts (getf c :start) :expand expand :score score :goalp goalp :branch 3
+                            :budget (or (getf c :budget) 60) :max-depth (or (getf c :max-depth) 40)
+                            :test 'eql)
+               (ailisp:tree-search
+                 (getf c :start) :expand expand :score score :goalp goalp
+                 :beam (getf c :beam) :branch 3
+                 :budget (or (getf c :budget) 100) :max-depth (or (getf c :max-depth) 40)
+                 :test 'eql))
          (cond ((not (eq (and goal t) (and (getf c :expect-goal) t)))
                 (values nil (format nil "goal ~S != ~S" (and goal t) (getf c :expect-goal))))
                ((and (member :expect-state c)
@@ -413,6 +417,7 @@
        (multiple-value-bind (src ok score)
            (ailisp:search-skill (getf c :desc) :name (getf c :proc) :params (getf c :params)
                                 :examples (getf c :examples) :model m
+                                :policy (or (getf c :policy) :best-first)
                                 :branch (or (getf c :branch) 2) :beam (or (getf c :beam) 2)
                                 :budget (or (getf c :budget) 6) :max-depth (or (getf c :max-depth) 3))
          (cond
